@@ -507,6 +507,8 @@ def make_off_lattice_walk(n_segments,length,angle,dihedral):
 			and a fixed dihedral relative to the first two
 	"""
 	angle_rad = angle/180*np.pi
+	dihedral_rad = dihedral/180*np.pi
+	#---! enforce ranges on the angles and dihedral
 	if n_segments<3: raise Exception('this walk requires an angle and a dihedral (min. 3 links)')
 	pts = np.zeros((n_segments+1,3))
 	for mnum in range(n_segments+1):
@@ -515,382 +517,59 @@ def make_off_lattice_walk(n_segments,length,angle,dihedral):
 		elif mnum==2: 
 			rotation = rotation_matrix([0.,0.,-1.],angle_rad)
 			rotated_pt = np.dot(rotation,np.array([pts[mnum-2]-pts[mnum-1]]).T).T
-			pts[mnum] = rotated_pt + pts[mnum-1]
-		elif mnum==3: 
+			pts[mnum] = vecnorm(rotated_pt+pts[mnum-1])*length
+		elif mnum>=3: 
 			#---given pts 1,2,3 and angle,dihedral then find point 4
 			#---get the vector normal to vectors 1-2,2-3
 			vec_12x23 = vecnorm(np.cross(vecnorm(pts[mnum-3]-pts[mnum-2]),vecnorm(pts[mnum-1]-pts[mnum-2])))
 			vec_23 = vecnorm(pts[mnum-2]-pts[mnum-1])
-			#---! some handedness rule happens here
-			pts4a = np.cross(vec_12x23,vec_23)
-			pts[mnum] = pts4a + pts[mnum-1]
-			if state.review_3d: review3d(lines=[pts[:4]],points=[pts[3:4]],tube=0.02,radius=0.2)
-			import ipdb;ipdb.set_trace();
-			#---start my getting the zero-dihedral point, which is normal to the 2-3 vector
-		else: break
+			#---pts4a is normal to 23 and to the vector normal to 12 and 23
+			pts4a = np.cross(vec_12x23,vec_23) + pts[mnum-1]
+			#---now we wish to find pts4b, which is 4a rotated in the plane normal to 23 so that it has the
+			#---...correct dihedral
+			#---we reverse the sign of the dihedral to obey a right-hand rule
+			#---...this means that if you are looking down the 23 vector of the dihedral, a positive 
+			#---...dihedral angle causes the 4th point to rotate clockwise
+			rotation = rotation_matrix(vec_23,-1*dihedral_rad)
+			pts4b = np.dot(rotation,np.array([pts4a-pts[mnum-1]]).T).T[0] + pts[mnum-1]
+			#---rotate pts4b in the plane normal to the vector that is normal to the vector from the third
+			#---...point in the dihedral (pts[mnum]-1) to pts4b (which has the right dihedral angle) and also
+			#---...normal to the 23 vector. this ensures that the current rotation does not change the 
+			#---...torsion. we first subtract 90 so that the angle is applied relative to the 23 vector
+			vec_34b = np.cross(vec_23,vecnorm(pts4b-pts[mnum-1]))
+			rotation = rotation_matrix(vec_34b,angle_rad-np.pi/2.)
+			pts4c = vecnorm(np.dot(rotation,np.array([pts4b-pts[mnum-1]]).T).T[0])*length + pts[mnum-1]
+			pts[mnum] = pts4c
+	if state.review3d: review3d(lines=[pts],points=[pts],tube=0.02,radius=0.2)
+	return pts
 
 def make_gel_off_lattice(name='melt',a0=1.0,sizer=10,n_p=36,volume_limit=0.2,
-	uniform=True,diagonals=False,review=False,cwd=None):
+	uniform=True,diagonals=False,review=False,cwd=None,angle=90.,dihedral=90.):
 
 	"""
 	Make a melt by placing monomers on a (square) lattice in periodic 3-space according to a random walk.
 	"""
 
 	#---destination
-	### cwd = './' if not cwd else os.path.join(cwd,'')
 	cwd = state.here
+	n_p = state.melt_settings['n_p']
 
 	#---instantiate a monomer to retrieve the correct spacing of the repeat unit (a0)
 	mono = Monomer(gro='aglc.gro',remove_rules=state.place_specs.get('linkage_delete_atoms'))
 	
 	#---prepare an abstract 3D walk
-	walk_abstract = make_off_lattice_walk(5,1.0,145.,90.0)
+	walk_abstract_pts = make_off_lattice_walk(
+		n_p,state.melt_settings['a0'],
+		angle,dihedral)
+
+	#---loop over "links" in our 3D walk and superimpose a monomer on each link
+	points_raw = []
+	origin = np.array([0,0,0])
+	for mnum in range(1,n_p+1):
+		link_vec = walk_abstract_pts[mnum]-walk_abstract_pts[mnum-1]
+		xyz_placed = mono.place_on_linker(link_vec=link_vec)
+		points_raw.append(xyz_placed + walk_abstract_pts[mnum-1])
+	points_raw = np.array(points_raw)
+	if state.review3d: review3d(points=[points_raw])
 
 	import ipdb;ipdb.set_trace()
-	if False:
-
-		#---make a universe
-		if uniform: xd,yd,zd = mono.a0,mono.a0,mono.a0
-		else: raise Exception
-		xld,yld,zld = sizer,sizer,sizer
-		data_discrete = np.array([[i,j,k] 
-			for k in np.arange(0,zld,1) 
-			for j in np.arange(0,yld,1) 
-			for i in np.arange(0,xld,1)]).astype(int)
-
-		#---generate neighbor rules (with periodic boundary conditions)
-		if not diagonals:
-			neighbor_list = [(0+i,0+j,0+k) 
-				for i in range(-1,2) for j in range(-1,2) 
-				for k in range(-1,2) if not all([x==0 for x in [i,j,k]]) 
-				and sum([x!=0 for x in [i,j,k]])==1]
-		else: raise Exception
-		neighbors = lambda x,y,z : [((x+i)%xld,(y+j)%yld,(z+k)%zld) for i,j,k in neighbor_list]
-
-		#---CONSTRUCT A non-intersecting walk in 3-space
-		#---track traffic (no intersections) and random walks through the space
-		walkers,walks = [],np.zeros((xld,yld,zld)).astype(int)
-		walk_id = 1
-		while float(np.sum(walks==0))/np.product(walks.shape)>volume_limit:
-			filled_up = np.product(walks.shape)-float(np.sum(walks==0))
-			status('[CONSTRUCT] making polymers',
-				i=filled_up,looplen=np.product(walks.shape)*(1.0-volume_limit))
-			#---random starting point
-			pos = tuple(np.transpose(np.where(walks==0))[np.random.randint(np.sum(walks==0))])
-			#---initiate
-			size = 0
-			walks[pos] = walk_id
-			#---loop
-			this_walk = [pos]
-			failure = False
-			while size<n_p:
-				ways = filter(lambda n : walks[n]==0,neighbors(*pos))
-				if not ways:
-					failure = True
-					break
-				pos = ways[np.random.randint(len(ways))]
-				this_walk.append(pos)
-				walks[pos] = walk_id
-				size += 1
-			if not failure:
-				walkers.append(this_walk)
-				walk_id += 1
-		status('\n[CONSTRUCT] done')
-
-		#---use a half-lattice offset to place the dots in the center of the box if we are doing a 3D review
-		if uniform: offset = a0/2.0
-		else: raise Exception
-
-		#---review in 3D and then exit (note that mayavi is asynchronous)
-		if review:
-			#---requires working mayavi installation (typically via qt4 backend)
-			os.environ['ETS_TOOLKIT']='qt4'
-			from mayavi import mlab
-			import matplotlib as mpl
-			import matplotlib.pylab as plt
-			#---import locals
-			from plotter3d import meshplot,meshpoints,pbcwire
-			meshpoints(data_discrete+offset,color=(1,1,1),scale_factor=0.2,opacity=0.5)
-			pbcwire([xld,yld,zld])
-			for ww,walker in enumerate(walkers):
-				#---identify breaks over PBCs and exclude the tube there
-				breaks, = np.where(np.abs(np.sum([i[1:]-i[:-1] for i in [np.array(walker)]][0],axis=1))>1.0)
-				for seg in np.split(walker,breaks+1):
-					mlab.plot3d(*np.array(seg).T+offset,color=mpl.cm.jet(float(ww)/(len(walkers)-1))[:3],
-						tube_radius=0.1)
-
-		#---MOVE A MONOMER TO LINKS USING REPEAT UNIT
-		combined_xyz = [[] for i in walkers]
-		#---loop over all polymers
-		for poly_num,poly in enumerate(walkers):
-			#---loop over monomers with a polymer
-			for mono_num in range(len(poly)-1):
-				#---rescale the polymer (from integer units) to the correct spacing
-				polyr = np.array(poly)*np.array([xd,yd,zd])
-				link_vec = np.array(polyr[mono_num+1])-np.array(polyr[mono_num])
-				#---the monomer can move itself into position, given a rescaled link vector
-				xyz_placed = mono.place_on_linker(link_vec=link_vec)
-				#---move the monomer to the start position with pbc offset
-				combined_xyz[poly_num].append(xyz_placed + polyr[mono_num] + offset)
-
-		#---view the results
-		if review:
-			meshpoints(xyzp_placed,scale_factor=0.1)
-			meshpoints(np.concatenate((xyzp_placed[9:10],xyzp_placed[9:10])),color=(1,0,1),scale_factor=0.2)
-			meshpoints(np.concatenate((xyzp_placed[22:23],xyzp_placed[22:23])),
-				color=(1,0,1),scale_factor=0.2)
-			raw_input('[QUESTION] enter anything to continue')
-
-		#---write the GRO without atom deletions for testing purposes
-		save_rules = list(mono.remove_rules)
-		mono.remove_rules = []
-		#---custom gro writer
-		lines,resnum_abs,atom_num_abs = [],1,1
-		#---loop over polymers
-		for poly_num,poly in enumerate(combined_xyz):
-			#---loop over monomers in each polymer
-			for mono_num,mono_this in enumerate(poly):
-				#---send coordinates for this monomer to the mono instance
-				mono.xyz = mono_this
-				#---specify the terminus and the monomer class will delete the correct molecules
-				mono.terminus = {0:'start',n_p-1:'stop'}.get(mono_num,'mid')
-				lines_more = mono.lines(atom_num=atom_num_abs,resnum=resnum_abs)
-				lines.extend(lines_more)
-				atom_num_abs += len(lines_more)
-			resnum_abs += 1
-		with open(cwd+'%s_raw.gro'%name,'w') as fp: 
-			fp.write('%s\n%d\n'%(name,len(lines))+''.join(lines)+' '.join(
-				[dotplace(a0*i) for i in [xld,yld,zld]])+'\n')
-		#---resume standard execution and repeat
-		mono.remove_rules = save_rules
-		#---custom gro writer
-		lines,resnum_abs,atom_num_abs = [],1,1
-		#---loop over polymers
-		for poly_num,poly in enumerate(combined_xyz):
-			#---loop over monomers in each polymer
-			for mono_num,mono_this in enumerate(poly):
-				#---send coordinates for this monomer to the mono instance
-				mono.xyz = mono_this
-				#---specify the terminus and the monomer class will delete the correct molecules
-				mono.terminus = {0:'start',n_p-1:'stop'}.get(mono_num,'mid')
-				lines_more = mono.lines(atom_num=atom_num_abs,resnum=resnum_abs)
-				lines.extend(lines_more)
-				atom_num_abs += len(lines_more)
-			resnum_abs += 1
-
-		#---PROTOTYPE POLYMER TOPOLOGY BUILDER
-		#---! rpb speculates that we added this here from the charmm parm file or something? 
-		#---! ...we bootstrap the polymer from the monomer alpha glucose
-		mol = MoleculeModel(state.aglc_source)
-		#---select the correct molecule from the ITP
-		molspec = mol.molecules['Other']
-		#---! the above needs to be automated, change "Other" to AGLC 
-		#---! ...and use pdb2gmx to auto-generate the monomer topology
-
-		#---write the top file
-		remove_rules = state.place_specs.get('linkage_delete_atoms')
-		with open(state.here+'vacuum.top','w') as fp:
-			#---refer to the CHARMM forcefield
-			fp.write('#include "./charmm36.ff/forcefield.itp"\n')
-			fp.write('#include "./charmm36.ff/tip3p.itp"\n')
-			#---define the molecule type
-			fp.write('[ moleculetype ]\n')
-			fp.write('; Name nrexcl\n')
-			fp.write('AGLC 3\n')
-			#---write atoms
-			fp.write('[ atoms ]\n')
-			fp.write('; nr type resnr residue atom cgnr charge mass typeB chargeB massB\n')
-			fp.write('; residue 1 AGLC rtp AGLC q  0.0\n')
-			column_order = GMXTopology._entry_abstracted['atoms']['records'].split()
-			#---loop over monomers in the polymer
-			resnum_abs,atom_num_abs = 1,1
-			for mono_num in range(n_p):
-				#---loop over atoms in a monomer
-				#---figure out which deletions to apply depending on whether this monomer is a terminus
-				terminus = {0:'start',n_p-1:'stop'}.get(mono_num,'mid')
-				remove_which = Monomer.termini_removals[terminus]
-				#---select atoms that are not on the deletion list for either terminus
-				atom_indices = [ii for ii,i in enumerate(molspec['atoms']) 
-					if not any([i['atom'] in remove_rules[j] for j in remove_which])]
-				#---write atom entries for the valid atom_indices
-				for atom_num in atom_indices:
-					new_entry = dict(molspec['atoms'][atom_num])
-					#---update atom number and residue index
-					new_entry['id'] = atom_num_abs
-					new_entry['resnr'] = mono_num+1
-					new_entry['cgnr'] = atom_num_abs
-					#---loop over possible atom name/partial charge changes
-					if state.place_specs['atom_name_changes']:
-						assert type(state.place_specs['atom_name_changes'])==list,'changes must be a list'
-						for change_entry in state.place_specs['atom_name_changes']:
-							#---rule is a "next" and the monomer is not the first one
-							#---...or rule is a "previous" and the monomer is not the last one
-							if (((mono_num>0 and change_entry['which'] == 'next') or 
-								(mono_num<n_p-1 and change_entry['which'] == 'previous'))
-								and change_entry['atom']==new_entry['atom']):
-								#---rule is a "next" and the monomer is not the first one
-								#---...or rule is a "previous" and the monomer is not the last one
-								assert new_entry['type']==change_entry['from']
-								new_entry['type'] = change_entry['to']
-								#---check the current partial charges to prevent user error
-								if not float(new_entry['charge'])==float(change_entry['from_charge']):
-									raise Exception('previous (partial) charge does not equal '+
-										'the new charge please check the values and/or modify '+
-										'the precision to pass this test')
-								#---fix the partial charges
-								new_entry['charge'] = '%.3f'%float(change_entry['to_charge'])
-					#---use the column order to print the entry correctly
-					line = ' '.join([str(new_entry[i]) for i in column_order])
-					fp.write(line+'\n')
-					atom_num_abs += 1
-
-			#---write bond entries
-			fp.write('[ bonds ]\n')
-			fp.write('; ai aj funct c0 c1 c2 c3\n')
-			column_order = GMXTopology._entry_abstracted['bonds']['records'].split()
-			#---loop over monomers in the polymer
-			previous_atoms,linker_indices,all_bonds = 0,[],[]
-			for mono_num in range(n_p):
-				#---! the following terminus code is redundant -- make it a function
-				#---figure out which deletions to apply depending on whether this monomer is a terminus
-				terminus = {0:'start',n_p-1:'stop'}.get(mono_num,'mid')
-				remove_which = Monomer.termini_removals[terminus]
-				#---select atoms that are not on the deletion list for either terminus
-				atom_indices = [ii for ii,i in enumerate(molspec['atoms']) 
-					if not any([i['atom'] in remove_rules[j] for j in remove_which])]
-				#---add the linker if necessary
-				if mono_num > 0:
-					these_atoms = [i['atom'] for i in molspec['atoms']]
-					#---get the index of the "end" of the repeat unit
-					prev_index_abs = these_atoms.index(state.place_specs['repeat_unit']['end'])
-					link_start = atom_indices_prev.index(prev_index_abs) + previous_atoms_prev + 1
-					link_end = [these_atoms[j] for j in atom_indices].index(
-						state.place_specs['repeat_unit']['next']) + 1 + previous_atoms
-					#---! manually specifying function here
-					linker_bond = {'i':'%s'%link_start,'length':'','j':'%s'%link_end,'force': '1','funct':''}
-					linker_indices.append((link_start,link_end))
-					line = ' '.join([str(linker_bond[i]) for i in column_order])
-					fp.write(line+'\n')
-				#---only include bonds for atoms that are not removed
-				valid_bonds = [i for i in molspec['bonds'] if not any([int(i[j])-1 
-					not in atom_indices for j in 'ij'])]
-				#---loop over the bonds and increment residue indices
-				for bond_num,entry in enumerate(valid_bonds):
-					new_entry = dict(entry)
-					#---update indices
-					new_entry['i'] = atom_indices.index(int(new_entry['i'])-1)+1 + previous_atoms
-					new_entry['j'] = atom_indices.index(int(new_entry['j'])-1)+1 + previous_atoms
-					all_bonds.append((new_entry['i'],new_entry['j']))
-					#---use the column order to print the entry correctly
-					line = ' '.join([str(new_entry[i]) for i in column_order])
-					fp.write(line+'\n')
-				previous_atoms_prev = int(previous_atoms)
-				previous_atoms += len(atom_indices)
-				#---retain these atom indices for the linker
-				atom_indices_prev = list(atom_indices)
-
-			#---write ANGLE entries
-			fp.write('[ angles ]\n')
-			fp.write('; i j k funct angle force\n')
-			column_order = GMXTopology._entry_abstracted['angles']['records'].split()
-			#---loop over monomers in the polymer
-			previous_atoms = 0
-			for mono_num in range(n_p):
-				#---! the following terminus code is redundant -- make it a function
-				#---figure out which deletions to apply depending on whether this monomer is a terminus
-				terminus = {0:'start',n_p-1:'stop'}.get(mono_num,'mid')
-				#terminus = {0:'stop',n_p-1:'start'}.get(mono_num,'mid')
-				remove_which = Monomer.termini_removals[terminus]
-				#---select atoms that are not on the deletion list for either terminus
-				atom_indices = [ii for ii,i in enumerate(molspec['atoms']) 
-					if not any([i['atom'] in remove_rules[j] for j in remove_which])]
-				#---only include bonds for atoms that are not removed
-				valid_angles = [i for i in molspec['angles'] if not any([int(i[j])-1 
-					not in atom_indices for j in 'ijk'])]
-				#---loop over the bonds and increment residue indices
-				for angle_num,entry in enumerate(valid_angles):
-					new_entry = dict(entry)
-					#---update indices
-					new_entry['i'] = atom_indices.index(int(new_entry['i'])-1)+1 + previous_atoms
-					new_entry['j'] = atom_indices.index(int(new_entry['j'])-1)+1 + previous_atoms
-					new_entry['k'] = atom_indices.index(int(new_entry['k'])-1)+1 + previous_atoms
-					#---use the column order to print the entry correctly
-					line = ' '.join([str(new_entry[i]) for i in column_order])
-					fp.write(line+'\n')
-				previous_atoms_prev = int(previous_atoms)
-				previous_atoms += len(atom_indices)
-				#---retain these atom indices for the linker
-				atom_indices_prev = list(atom_indices)
-				#---add angles for the linker
-				for lnum,(linkl,linkr) in enumerate(linker_indices):
-					bound_not = lambda p : [j for k in [i for i in all_bonds if p in i] for j in k if j!=p]
-					l1,r1 = [list(set(bound_not(p))) for p in [linkl,linkr]]
-					new_angles = [(linkl,linkr,i) for i in r1]+[(i,linkl,linkr) for i in l1]
-					for na in new_angles:
-						new_entry = dict(entry)
-						for ll,l in enumerate('ijk'): new_entry[l] = na[ll]
-						#---use the column order to print the entry correctly
-						line = ' '.join([str(new_entry[i]) for i in column_order])
-						fp.write(line+'\n')
-
-			#---write DIHEDRAL entries
-			fp.write('[ dihedrals ]\n')
-			fp.write('; i j k l funct angle force\n')
-			column_order = GMXTopology._entry_abstracted['dihedrals']['records'].split()
-			#---loop over monomers in the polymer
-			previous_atoms = 0
-			for mono_num in range(n_p):
-				#---! the following terminus code is redundant -- make it a function
-				#---figure out which deletions to apply depending on whether this monomer is a terminus
-				terminus = {0:'start',n_p-1:'stop'}.get(mono_num,'mid')
-				remove_which = Monomer.termini_removals[terminus]
-				#---select atoms that are not on the deletion list for either terminus
-				atom_indices = [ii for ii,i in enumerate(molspec['atoms']) 
-					if not any([i['atom'] in remove_rules[j] for j in remove_which])]
-				#---only include bonds for atoms that are not removed
-				valid_dihedrals = [i for i in molspec['dihedrals'] if not any([int(i[j])-1 
-					not in atom_indices for j in 'ijkl'])]
-				#---loop over the bonds and increment residue indices
-				for angle_num,entry in enumerate(valid_dihedrals):
-					new_entry = dict(entry)
-					#---update indices
-					new_entry['i'] = atom_indices.index(int(new_entry['i'])-1)+1 + previous_atoms
-					new_entry['j'] = atom_indices.index(int(new_entry['j'])-1)+1 + previous_atoms
-					new_entry['k'] = atom_indices.index(int(new_entry['k'])-1)+1 + previous_atoms
-					new_entry['l'] = atom_indices.index(int(new_entry['l'])-1)+1 + previous_atoms
-					#---use the column order to print the entry correctly
-					line = ' '.join([str(new_entry[i]) for i in column_order])
-					fp.write(line+'\n')
-				previous_atoms_prev = int(previous_atoms)
-				previous_atoms += len(atom_indices)
-				#---retain these atom indices for the linker
-				atom_indices_prev = list(atom_indices)
-			#---add dihedrals for the linker
-			for lnum,(linkl,linkr) in enumerate(linker_indices):
-				bound_not = lambda p : [j for k in [i for i in all_bonds if p in i] for j in k if j!=p]
-				l1,r1 = [list(set(bound_not(p))) for p in [linkl,linkr]]
-				l2 = [(i,j,linkl,linkr) for j in l1 for i in bound_not(j) if i!=linkl]
-				r2 = [(linkl,linkr,j,i) for j in r1 for i in bound_not(j) if i!=linkr]
-				#---still need the ones that run all the way through
-				thru = [(l,linkl,linkr,r) for l in l1 for r in r1]
-				combos = r2+l2+thru
-				#---no reversed dihedrals
-				extra_dihedrals = [combos[k] for k in [ii for ii,i in enumerate(combos) 
-					if i not in [list(j)[::-1] for j in combos]]]
-				for ed in extra_dihedrals:
-					new_entry = dict(entry)
-					for ll,l in enumerate('ijkl'): new_entry[l] = ed[ll]
-					#---use the column order to print the entry correctly
-					line = ' '.join([str(new_entry[i]) for i in column_order])
-					fp.write(line+'\n')
-			#---write the total number of molecules
-			fp.write('[ system ]\nMY SYSTEM\n[ molecules ]\nAGLC %d\n'%len(combined_xyz))
-
-		#---write the GRO
-		with open(cwd+'%s.gro'%name,'w') as fp: 
-			fp.write('%s\n%d\n'%(name,len(lines))+''.join(lines)+' '.join(
-				[dotplace(a0*i) for i in [xld,yld,zld]])+'\n')
-
-		#---!!! THE QTOT IS WRONG AND WHEN YOU FIX THE TOP FILE YOU SHOULD FIX IT!!!!!
-		return len(combined_xyz)
-

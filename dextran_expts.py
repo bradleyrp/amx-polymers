@@ -1,6 +1,6 @@
 {
 
-'dextran_dev':{
+'dextran_dev_pentamer':{
 #####
 ####
 ###
@@ -22,7 +22,7 @@ sources: ['@charmm/charmm36.ff']
 aglc source: @structure-repo/dextran/aglc-example.top
 water buffer: 1.2
 on lattice: True
-review 3d: True
+review3d: True
 melt settings:|{
 	'a0':0.439,
 	'sizer':6,
@@ -76,6 +76,64 @@ USAGE NOTES:|
 		currently porting the on-lattice copy
 			note that it fails every fifth time at the vacuum step
 			this is part of why we want to do the off-lattice version
+"""},
+
+'dextran_dev':{
+#####
+####
+###
+##
+#
+'tags':['aamd'],
+'script':'script-gel.py',
+'params':'parameters.py',
+'extensions':['codes/melts.py'],
+'settings':"""
+
+step: melt
+polymer name: AGLC
+equilibration: ""
+ff_includes: []
+include_adds: []
+files: ['@structure-repo/dextran/aglc.gro']
+sources: ['@charmm/charmm36.ff']
+aglc source: @structure-repo/dextran/aglc-example.top
+water buffer: 1.2
+on lattice: False
+review3d: True
+melt settings:|{
+	'a0':0.439,
+	'sizer':6,
+	'n_p':36,
+	'volume_limit':0.99,
+	'uniform':True,
+	'diagonals':False,
+	'review':False,
+	'angle':145.0,
+	'dihedral':100.0}
+
+mdp specs:|{
+	'group':'aamd',
+	'mdps':{
+		'input-em-steep-in.mdp':[{'integrator':'steep','temperature':'off'}],
+		'input-md-in.mdp':[{'temperature':'bussi-other-water'}],
+		}
+	}
+
+place specs:|{
+	'monomer':'algc.gro',
+	'repeat_unit':{'end':'O6','start':'O1','next':'C1'},
+	'linkage_delete_atoms':[['HO6'],['HO1','O1']],
+	'atom_name_changes':[
+		{'from':'OC311','from_charge':-0.65,'to_charge':-0.36,
+		'to':'OC301','atom':'O6','which':'previous'},
+		{'from':'CC3162','from_charge':0.34,'to_charge':0.29,
+		'to':'CC3162','atom':'C1','which':'next'},
+		{'from':'CC321','from_charge':0.050,'to_charge':0.00,
+		'to':'CC321','atom':'C6','which':'previous'}]}
+
+USAGE NOTES:|
+	copied from dextran_dev_pentamer
 """},
 
 }
