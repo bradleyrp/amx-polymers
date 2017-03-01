@@ -519,8 +519,8 @@ def make_off_lattice_walk(n_segments,length,angle,dihedral):
 		elif mnum==3: 
 			#---given pts 1,2,3 and angle,dihedral then find point 4
 			#---get the vector normal to vectors 1-2,2-3
-			vec_12x23 = vecnorm(np.cross(vecnorm(pts[mnum-2]-pts[mnum-1]),vecnorm(pts[mnum]-pts[mnum-1])))
-			vec_23 = vecnorm(pts[mnum-1]-pts[mnum])
+			vec_12x23 = vecnorm(np.cross(vecnorm(pts[mnum-3]-pts[mnum-2]),vecnorm(pts[mnum-1]-pts[mnum-2])))
+			vec_23 = vecnorm(pts[mnum-2]-pts[mnum-1])
 			#---! some handedness rule happens here
 			pts4a = np.cross(vec_12x23,vec_23)
 			pts[mnum] = pts4a + pts[mnum-1]

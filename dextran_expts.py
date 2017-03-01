@@ -21,7 +21,7 @@ files: ['@structure-repo/dextran/aglc.gro']
 sources: ['@charmm/charmm36.ff']
 aglc source: @structure-repo/dextran/aglc-example.top
 water buffer: 1.2
-on lattice: False
+on lattice: True
 review 3d: True
 melt settings:|{
 	'a0':0.439,
