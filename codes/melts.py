@@ -4,23 +4,16 @@ import os,re,subprocess
 import numpy as np
 import copy
 
-###from lib_parse_itp import*
-
-import ipdb
-from ipdb import set_trace as trace
-
 _not_reported = ['vecnorm','dotplace','rotation_matrix','check_cols','review3d']
 
 vecnorm = lambda x: x/np.linalg.norm(x)
 dotplace = lambda n: re.compile(r'(\d)0+$').sub(r'\1',"%8.3f"%float(n)).ljust(8)
 
 def rotation_matrix(axis,theta):
-
 	"""
 	Return the rotation matrix associated with counterclockwise rotation about
 	the given axis by theta radians using Euler-Rodrigues formula.
 	"""
-
 	axis = np.asarray(axis)
 	theta = np.asarray(theta)
 	if all(axis==0): return np.identity(3) 
@@ -33,16 +26,11 @@ def rotation_matrix(axis,theta):
 		[2*(bd+ac),2*(cd-ab),aa+dd-bb-cc]])
 
 class Monomer:
-
-	#termini_removals = {'start':[1],'stop':[0],'mid':[0,1]}
 	termini_removals = {'start':[0],'stop':[1],'mid':[0,1]}
-
 	def __init__(self,gro,**kwargs):
-
 		"""
 		Holds a single monomer of a growing polymer with useful metadata and placement routines.
 		"""
-
 		#---using read_gro from common
 		self.raw = read_gro(gro)
 		self.xyz = np.array(self.raw['points'])
@@ -57,11 +45,9 @@ class Monomer:
 		self.terminus = None
 
 	def place_on_linker(self,link_vec):
-
 		"""
 		Rotate and move a monomer to a vector.
 		"""
-
 		#---! HOW ARE PBCS IMPLEMENTED HERE?
 		#if not np.abs(np.linalg.norm(link_vec)-self.a0)<=0.001:
 		#	return 'aaa'
@@ -86,11 +72,9 @@ class Monomer:
 				xyzp_placed = [i for ii,i in enumerate(xyzp_placed) if ii not in remove_inds]
 
 	def lines(self,atom_num=1,resnum=1):
-
 		"""
 		Return GRO lines for this monomer. Also handles deletion rules.
 		"""
-
 		#---loop over atoms in a monomer
 		lines,atom_num_abs = [],int(atom_num)
 		#---figure out which deletions to apply depending on whether this monomer is a terminus
@@ -519,7 +503,8 @@ def make_off_lattice_walk(n_segments,length,angle,dihedral):
 		start from the origin
 		first linker is along x-axis, 1 unit lenth
 		second linker is the incoming angle, rotated in e.g. xy-plane
-		third linker must have a fixed angle relative to the second, and a fixed dihedral relative to the first two
+		third linker must have a fixed angle relative to the second, 
+			and a fixed dihedral relative to the first two
 	"""
 	angle_rad = angle/180*np.pi
 	if n_segments<3: raise Exception('this walk requires an angle and a dihedral (min. 3 links)')
@@ -531,10 +516,17 @@ def make_off_lattice_walk(n_segments,length,angle,dihedral):
 			rotation = rotation_matrix([0.,0.,-1.],angle_rad)
 			rotated_pt = np.dot(rotation,np.array([pts[mnum-2]-pts[mnum-1]]).T).T
 			pts[mnum] = rotated_pt + pts[mnum-1]
-			
-			if state.review_3d: review3d(lines=[pts[:3]],points=[pts[:3]],tube=0.02)
+		elif mnum==3: 
+			#---given pts 1,2,3 and angle,dihedral then find point 4
+			#---get the vector normal to vectors 1-2,2-3
+			vec_12x23 = vecnorm(np.cross(vecnorm(pts[mnum-2]-pts[mnum-1]),vecnorm(pts[mnum]-pts[mnum-1])))
+			vec_23 = vecnorm(pts[mnum-1]-pts[mnum])
+			#---! some handedness rule happens here
+			pts4a = np.cross(vec_12x23,vec_23)
+			pts[mnum] = pts4a + pts[mnum-1]
+			if state.review_3d: review3d(lines=[pts[:4]],points=[pts[3:4]],tube=0.02,radius=0.2)
 			import ipdb;ipdb.set_trace();
-
+			#---start my getting the zero-dihedral point, which is normal to the 2-3 vector
 		else: break
 
 def make_gel_off_lattice(name='melt',a0=1.0,sizer=10,n_p=36,volume_limit=0.2,
@@ -581,7 +573,8 @@ def make_gel_off_lattice(name='melt',a0=1.0,sizer=10,n_p=36,volume_limit=0.2,
 		walk_id = 1
 		while float(np.sum(walks==0))/np.product(walks.shape)>volume_limit:
 			filled_up = np.product(walks.shape)-float(np.sum(walks==0))
-			status('[CONSTRUCT] making polymers',i=filled_up,looplen=np.product(walks.shape)*(1.0-volume_limit))
+			status('[CONSTRUCT] making polymers',
+				i=filled_up,looplen=np.product(walks.shape)*(1.0-volume_limit))
 			#---random starting point
 			pos = tuple(np.transpose(np.where(walks==0))[np.random.randint(np.sum(walks==0))])
 			#---initiate
@@ -644,7 +637,8 @@ def make_gel_off_lattice(name='melt',a0=1.0,sizer=10,n_p=36,volume_limit=0.2,
 		if review:
 			meshpoints(xyzp_placed,scale_factor=0.1)
 			meshpoints(np.concatenate((xyzp_placed[9:10],xyzp_placed[9:10])),color=(1,0,1),scale_factor=0.2)
-			meshpoints(np.concatenate((xyzp_placed[22:23],xyzp_placed[22:23])),color=(1,0,1),scale_factor=0.2)
+			meshpoints(np.concatenate((xyzp_placed[22:23],xyzp_placed[22:23])),
+				color=(1,0,1),scale_factor=0.2)
 			raw_input('[QUESTION] enter anything to continue')
 
 		#---write the GRO without atom deletions for testing purposes
@@ -740,8 +734,9 @@ def make_gel_off_lattice(name='melt',a0=1.0,sizer=10,n_p=36,volume_limit=0.2,
 								new_entry['type'] = change_entry['to']
 								#---check the current partial charges to prevent user error
 								if not float(new_entry['charge'])==float(change_entry['from_charge']):
-									raise Exception('previous (partial) charge does not equal the new charge '+
-										'please check the values and/or modify the precision to pass this test')
+									raise Exception('previous (partial) charge does not equal '+
+										'the new charge please check the values and/or modify '+
+										'the precision to pass this test')
 								#---fix the partial charges
 								new_entry['charge'] = '%.3f'%float(change_entry['to_charge'])
 					#---use the column order to print the entry correctly
