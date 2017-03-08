@@ -547,7 +547,7 @@ def make_off_lattice_walk(n_segments,length,angle,torsion):
 	return pts
 
 def make_gel_off_lattice(name='melt',a0=1.0,sizer=10,n_p=36,volume_limit=0.2,
-	uniform=True,diagonals=False,review=False,cwd=None,angle=90.,dihedral=90.):
+	uniform=True,diagonals=False,review=False,cwd=None,angle=90.,torsion=90.):
 
 	"""
 	Make a melt by placing monomers on a (square) lattice in periodic 3-space according to a random walk.
@@ -563,7 +563,7 @@ def make_gel_off_lattice(name='melt',a0=1.0,sizer=10,n_p=36,volume_limit=0.2,
 	#---prepare an abstract 3D walk
 	walk_abstract_pts = make_off_lattice_walk(
 		n_p,state.melt_settings['a0'],
-		angle,dihedral)
+		angle,torsion)
 
 	#---loop over "links" in our 3D walk and superimpose a monomer on each link
 	points_raw = []
