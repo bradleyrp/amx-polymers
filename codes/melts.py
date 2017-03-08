@@ -216,6 +216,8 @@ def make_gel_on_lattice(name='melt',a0=1.0,sizer=10,n_p=36,volume_limit=0.2,
 		meshpoints(np.concatenate((xyzp_placed[22:23],xyzp_placed[22:23])),color=(1,0,1),scale_factor=0.2)
 		raw_input('[QUESTION] enter anything to continue')
 
+	#---! ongoing off_lattice development should start here
+
 	#---write the GRO without atom deletions for testing purposes
 	save_rules = list(mono.remove_rules)
 	mono.remove_rules = []
@@ -494,7 +496,7 @@ def review3d(**kwargs):
 	for points in kwargs.get('points',[]): pointplot(*points.T,r=sphere_radius)
 	mlab.show()
 
-def make_off_lattice_walk(n_segments,length,angle,dihedral):
+def make_off_lattice_walk(n_segments,length,angle,torsion):
 	"""
 	Make an unconstrained 3D random walk given a link length a0 and a mean angle and dihedral.
 	Angle in radians.
@@ -505,9 +507,10 @@ def make_off_lattice_walk(n_segments,length,angle,dihedral):
 		second linker is the incoming angle, rotated in e.g. xy-plane
 		third linker must have a fixed angle relative to the second, 
 			and a fixed dihedral relative to the first two
+	note "dihedral" really means torsion. this is an abstract 3D random walk
 	"""
 	angle_rad = angle/180*np.pi
-	dihedral_rad = dihedral/180*np.pi
+	torsion_rad = torsion/180*np.pi
 	#---! enforce ranges on the angles and dihedral
 	if n_segments<3: raise Exception('this walk requires an angle and a dihedral (min. 3 links)')
 	pts = np.zeros((n_segments+1,3))
@@ -530,7 +533,7 @@ def make_off_lattice_walk(n_segments,length,angle,dihedral):
 			#---we reverse the sign of the dihedral to obey a right-hand rule
 			#---...this means that if you are looking down the 23 vector of the dihedral, a positive 
 			#---...dihedral angle causes the 4th point to rotate clockwise
-			rotation = rotation_matrix(vec_23,-1*dihedral_rad)
+			rotation = rotation_matrix(vec_23,-1*torsion_rad)
 			pts4b = np.dot(rotation,np.array([pts4a-pts[mnum-1]]).T).T[0] + pts[mnum-1]
 			#---rotate pts4b in the plane normal to the vector that is normal to the vector from the third
 			#---...point in the dihedral (pts[mnum]-1) to pts4b (which has the right dihedral angle) and also
@@ -572,4 +575,242 @@ def make_gel_off_lattice(name='melt',a0=1.0,sizer=10,n_p=36,volume_limit=0.2,
 	points_raw = np.array(points_raw)
 	if state.review3d: review3d(points=[points_raw])
 
-	import ipdb;ipdb.set_trace()
+	#---! temporarily back to "combined_xyz" nomenclature
+	combined_xyz = [points_raw]
+
+	#---! HACKED
+	box_vectors = [100.,100.,100.]
+
+	#---write the GRO without atom deletions for testing purposes
+	save_rules = list(mono.remove_rules)
+	mono.remove_rules = []
+	#---custom gro writer
+	lines,resnum_abs,atom_num_abs = [],1,1
+	#---loop over polymers
+	for poly_num,poly in enumerate(combined_xyz):
+		#---loop over monomers in each polymer
+		for mono_num,mono_this in enumerate(poly):
+			#---send coordinates for this monomer to the mono instance
+			mono.xyz = mono_this
+			#---specify the terminus and the monomer class will delete the correct molecules
+			mono.terminus = {0:'start',n_p-1:'stop'}.get(mono_num,'mid')
+			lines_more = mono.lines(atom_num=atom_num_abs,resnum=resnum_abs)
+			lines.extend(lines_more)
+			atom_num_abs += len(lines_more)
+		resnum_abs += 1
+	#---! eventually remove the raw form because we don't need to see that version
+	with open(cwd+'%s_raw.gro'%name,'w') as fp: 
+		fp.write('%s\n%d\n'%(name,len(lines))+''.join(lines)+' '.join(
+			[dotplace(a0*i) for i in box_vectors])+'\n')
+	#---resume standard execution and repeat
+	mono.remove_rules = save_rules
+	#---custom gro writer
+	lines,resnum_abs,atom_num_abs = [],1,1
+	#---loop over polymers
+	for poly_num,poly in enumerate(combined_xyz):
+		#---loop over monomers in each polymer
+		for mono_num,mono_this in enumerate(poly):
+			#---send coordinates for this monomer to the mono instance
+			mono.xyz = mono_this
+			#---specify the terminus and the monomer class will delete the correct molecules
+			mono.terminus = {0:'start',n_p-1:'stop'}.get(mono_num,'mid')
+			lines_more = mono.lines(atom_num=atom_num_abs,resnum=resnum_abs)
+			lines.extend(lines_more)
+			atom_num_abs += len(lines_more)
+		resnum_abs += 1
+	#---write the GRO
+	with open(cwd+'%s.gro'%name,'w') as fp: 
+		fp.write('%s\n%d\n'%(name,len(lines))+''.join(lines)+' '.join(
+			[dotplace(a0*i) for i in box_vectors])+'\n')
+
+	#---! topology example (remove when finished)
+	topex = GMXTopology('inputs/test.top')
+
+	#---note that the on-lattice version had a custom topology writer. here we try the automatic way.
+	top = GMXTopology()
+
+	#---construct the new molecule
+	new_mol = {'moleculetype':{'molname':'AGLC','nrexcl':3},
+		'atoms':[],'bonds':[],'angles':[],'dihedrals':[]}
+
+	#---!
+	mol = GMXTopology(state.aglc_source)
+	#---select the correct molecule from the ITP
+	molspec = mol.molecules['Other']
+
+	#---!!! THE QTOT IS WRONG AND WHEN YOU FIX THE TOP FILE YOU SHOULD FIX IT!!!!!
+
+	#---build atoms
+	resnum_abs,atom_num_abs = 1,1
+	for mono_num in range(n_p):
+		#---loop over atoms in a monomer
+		#---figure out which deletions to apply depending on whether this monomer is a terminus
+		terminus = {0:'start',n_p-1:'stop'}.get(mono_num,'mid')
+		remove_which = Monomer.termini_removals[terminus]
+		#---select atoms that are not on the deletion list for either terminus
+		atom_indices = [ii for ii,i in enumerate(molspec['atoms']) 
+			if not any([i['atom'] in mono.remove_rules[j] for j in remove_which])]
+		#---write atom entries for the valid atom_indices
+		for atom_num in atom_indices:
+			new_entry = dict(molspec['atoms'][atom_num])
+			#---update atom number and residue index
+			new_entry['id'] = atom_num_abs
+			new_entry['resnr'] = mono_num+1
+			new_entry['cgnr'] = atom_num_abs
+			#---loop over possible atom name/partial charge changes
+			#---! isn't the following always true? redundant?
+			if state.place_specs['atom_name_changes']:
+				assert type(state.place_specs['atom_name_changes'])==list,'changes must be a list'
+				for change_entry in state.place_specs['atom_name_changes']:
+					#---rule is a "next" and the monomer is not the first one
+					#---...or rule is a "previous" and the monomer is not the last one
+					if (((mono_num>0 and change_entry['which'] == 'next') or 
+						(mono_num<n_p-1 and change_entry['which'] == 'previous'))
+						and change_entry['atom']==new_entry['atom']):
+						#---rule is a "next" and the monomer is not the first one
+						#---...or rule is a "previous" and the monomer is not the last one
+						assert new_entry['type']==change_entry['from']
+						new_entry['type'] = change_entry['to']
+						#---check the current partial charges to prevent user error
+						if not float(new_entry['charge'])==float(change_entry['from_charge']):
+							raise Exception('previous (partial) charge does not equal the new charge '+
+								'please check the values and/or modify the precision to pass this test')
+						#---fix the partial charges
+						new_entry['charge'] = '%.3f'%float(change_entry['to_charge'])
+			#---add the new entry to our new molecule
+			new_mol['atoms'].append(new_entry)
+			atom_num_abs += 1
+
+	#---build bonds
+	previous_atoms,linker_indices,all_bonds = 0,[],[]
+	for mono_num in range(n_p):
+		#---! the following terminus code is redundant -- make it a function
+		#---figure out which deletions to apply depending on whether this monomer is a terminus
+		terminus = {0:'start',n_p-1:'stop'}.get(mono_num,'mid')
+		remove_which = Monomer.termini_removals[terminus]
+		#---select atoms that are not on the deletion list for either terminus
+		atom_indices = [ii for ii,i in enumerate(molspec['atoms']) 
+			if not any([i['atom'] in mono.remove_rules[j] for j in remove_which])]
+		#---add the linker if necessary
+		if mono_num > 0:
+			these_atoms = [i['atom'] for i in molspec['atoms']]
+			#---get the index of the "end" of the repeat unit
+			prev_index_abs = these_atoms.index(state.place_specs['repeat_unit']['end'])
+			link_start = atom_indices_prev.index(prev_index_abs) + previous_atoms_prev + 1
+			link_end = [these_atoms[j] for j in atom_indices].index(
+				state.place_specs['repeat_unit']['next']) + 1 + previous_atoms
+			#---! manually specifying function here
+			linker_bond = {'i':'%s'%link_start,'length':'','j':'%s'%link_end,'force': '1','funct':''}
+			linker_indices.append((link_start,link_end))
+			new_mol['bonds'].append(linker_bond)
+		#---only include bonds for atoms that are not removed
+		valid_bonds = [i for i in molspec['bonds'] if not any([int(i[j])-1 
+			not in atom_indices for j in 'ij'])]
+		#---loop over the bonds and increment residue indices
+		for bond_num,entry in enumerate(valid_bonds):
+			new_entry = dict(entry)
+			#---update indices
+			new_entry['i'] = atom_indices.index(int(new_entry['i'])-1)+1 + previous_atoms
+			new_entry['j'] = atom_indices.index(int(new_entry['j'])-1)+1 + previous_atoms
+			all_bonds.append((new_entry['i'],new_entry['j']))
+			new_mol['bonds'].append(new_entry)
+		previous_atoms_prev = int(previous_atoms)
+		previous_atoms += len(atom_indices)
+		#---retain these atom indices for the linker
+		atom_indices_prev = list(atom_indices)
+
+	#---build angles
+	previous_atoms = 0
+	for mono_num in range(n_p):
+		#---! the following terminus code is redundant -- make it a function
+		#---figure out which deletions to apply depending on whether this monomer is a terminus
+		terminus = {0:'start',n_p-1:'stop'}.get(mono_num,'mid')
+		#terminus = {0:'stop',n_p-1:'start'}.get(mono_num,'mid')
+		remove_which = Monomer.termini_removals[terminus]
+		#---select atoms that are not on the deletion list for either terminus
+		atom_indices = [ii for ii,i in enumerate(molspec['atoms']) 
+			if not any([i['atom'] in mono.remove_rules[j] for j in remove_which])]
+		#---only include bonds for atoms that are not removed
+		valid_angles = [i for i in molspec['angles'] if not any([int(i[j])-1 
+			not in atom_indices for j in 'ijk'])]
+		#---loop over the bonds and increment residue indices
+		for angle_num,entry in enumerate(valid_angles):
+			new_entry = dict(entry)
+			#---update indices
+			new_entry['i'] = atom_indices.index(int(new_entry['i'])-1)+1 + previous_atoms
+			new_entry['j'] = atom_indices.index(int(new_entry['j'])-1)+1 + previous_atoms
+			new_entry['k'] = atom_indices.index(int(new_entry['k'])-1)+1 + previous_atoms
+			new_mol['angles'].append(new_entry)
+		previous_atoms_prev = int(previous_atoms)
+		previous_atoms += len(atom_indices)
+		#---retain these atom indices for the linker
+		atom_indices_prev = list(atom_indices)
+		#---add angles for the linker
+		for lnum,(linkl,linkr) in enumerate(linker_indices):
+			bound_not = lambda p : [j for k in [i for i in all_bonds if p in i] for j in k if j!=p]
+			l1,r1 = [list(set(bound_not(p))) for p in [linkl,linkr]]
+			new_angles = [(linkl,linkr,i) for i in r1]+[(i,linkl,linkr) for i in l1]
+			for na in new_angles:
+				new_entry = dict(entry)
+				for ll,l in enumerate('ijk'): 
+					new_entry[l] = na[ll]
+					new_mol['angles'].append(new_entry)
+
+	#---build dihedrals
+	previous_atoms = 0
+	for mono_num in range(n_p):
+		#---! the following terminus code is redundant -- make it a function
+		#---figure out which deletions to apply depending on whether this monomer is a terminus
+		terminus = {0:'start',n_p-1:'stop'}.get(mono_num,'mid')
+		remove_which = Monomer.termini_removals[terminus]
+		#---select atoms that are not on the deletion list for either terminus
+		atom_indices = [ii for ii,i in enumerate(molspec['atoms']) 
+			if not any([i['atom'] in mono.remove_rules[j] for j in remove_which])]
+		#---only include bonds for atoms that are not removed
+		valid_dihedrals = [i for i in molspec['dihedrals'] if not any([int(i[j])-1 
+			not in atom_indices for j in 'ijkl'])]
+		#---loop over the bonds and increment residue indices
+		for angle_num,entry in enumerate(valid_dihedrals):
+			new_entry = dict(entry)
+			#---update indices
+			new_entry['i'] = atom_indices.index(int(new_entry['i'])-1)+1 + previous_atoms
+			new_entry['j'] = atom_indices.index(int(new_entry['j'])-1)+1 + previous_atoms
+			new_entry['k'] = atom_indices.index(int(new_entry['k'])-1)+1 + previous_atoms
+			new_entry['l'] = atom_indices.index(int(new_entry['l'])-1)+1 + previous_atoms
+			new_mol['dihedrals'].append(new_entry)
+		previous_atoms_prev = int(previous_atoms)
+		previous_atoms += len(atom_indices)
+		#---retain these atom indices for the linker
+		atom_indices_prev = list(atom_indices)
+	#---add dihedrals for the linker
+	for lnum,(linkl,linkr) in enumerate(linker_indices):
+		bound_not = lambda p : [j for k in [i for i in all_bonds if p in i] for j in k if j!=p]
+		l1,r1 = [list(set(bound_not(p))) for p in [linkl,linkr]]
+		l2 = [(i,j,linkl,linkr) for j in l1 for i in bound_not(j) if i!=linkl]
+		r2 = [(linkl,linkr,j,i) for j in r1 for i in bound_not(j) if i!=linkr]
+		#---still need the ones that run all the way through
+		thru = [(l,linkl,linkr,r) for l in l1 for r in r1]
+		combos = r2+l2+thru
+		#---no reversed dihedrals
+		extra_dihedrals = [combos[k] for k in [ii for ii,i in enumerate(combos) 
+			if i not in [list(j)[::-1] for j in combos]]]
+		for ed in extra_dihedrals:
+			new_entry = dict(entry)
+			for ll,l in enumerate('ijkl'): 
+				new_entry[l] = ed[ll]
+				new_mol['dihedrals'].append(new_entry)
+
+	#---add the molecule and write the itp
+	top.add_molecule(**{'AGLC':new_mol})
+	top.write(state.here+'dextran.itp')
+	if not state.itp: state.itp = []
+	state.itp.append('dextran.itp')
+
+	#---collect and save the metadata
+	####state.include_adds = ['./charmm36.ff/forcefield.itp','./charmm36.ff/tip3p.itp','dextran.itp']
+	state.n_polymers = len(combined_xyz)
+	###for i in state.include_adds: include(i)
+	component(state.polymer_name,count=state.n_polymers)
+	
+	write_top('vacuum.top')
+	

@@ -93,14 +93,13 @@ USAGE NOTES:|
 step: melt
 polymer name: AGLC
 equilibration: ""
-ff_includes: []
-include_adds: []
+force field: charmm36
 files: ['@structure-repo/dextran/aglc.gro']
 sources: ['@charmm/charmm36.ff']
 aglc source: @structure-repo/dextran/aglc-example.top
 water buffer: 1.2
 on lattice: False
-review3d: True
+review3d: False
 melt settings:|{
 	'a0':0.439,
 	'sizer':6,
@@ -109,8 +108,8 @@ melt settings:|{
 	'uniform':True,
 	'diagonals':False,
 	'review':False,
-	'angle':145.0,
-	'dihedral':100.0}
+	'angle':-145.0,
+	'torsion':100.0}
 
 mdp specs:|{
 	'group':'aamd',
