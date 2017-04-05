@@ -624,7 +624,7 @@ def make_gel_off_lattice(name='melt',a0=1.0,sizer=10,n_p=36,volume_limit=0.2,
 			[dotplace(a0*i) for i in box_vectors])+'\n')
 
 	#---! topology example (remove when finished)
-	topex = GMXTopology('inputs/test.top')
+	#topex = GMXTopology('inputs/test.top')
 
 	#---note that the on-lattice version had a custom topology writer. here we try the automatic way.
 	top = GMXTopology()
@@ -813,4 +813,98 @@ def make_gel_off_lattice(name='melt',a0=1.0,sizer=10,n_p=36,volume_limit=0.2,
 	component(state.polymer_name,count=state.n_polymers)
 	
 	write_top('vacuum.top')
+
+def make_cg_gel(name='melt',**kwargs):
+
+	"""
+	Make a melt by placing monomers on a (square) lattice in periodic 3-space according to a random walk.
+	"""
+
+	polymer_molame = 'DEX'
+	monomer_resname = 'AGLC'
+
+	#---destination
+	cwd = state.here
+	n_p = state.melt_settings['n_p']
+
+	#---instantiate a monomer to retrieve the correct spacing of the repeat unit (a0)
+	#mono = Monomer(gro='aglc-cg.gro',remove_rules=False)
+
+	angle,torsion = state.melt_settings['angle'],state.melt_settings['torsion']
+	a0 = state.melt_settings['a0']
 	
+	#---prepare an abstract 3D walk
+	walk_abstract_pts = make_off_lattice_walk(
+		n_p,a0,angle,torsion)
+	points_with_sides = []
+	for pt in walk_abstract_pts:
+		points_with_sides.append(pt)
+		for i in range(2):
+			#---! randomly place sidechain points 1 a0 distance away. map 0 to 1 to -1 to 1
+			points_with_sides.append(pt+(1-2*np.random.rand(3))/10.)
+	points_with_sides = np.array(points_with_sides)
+	residue_names = np.array([monomer_resname for p in points_with_sides])
+	residue_indices = np.array([i/3+1 for i in range((n_p+1)*3)])
+	atom_names = np.tile(['B1','B2','B3'],n_p+1)
+	polymer = GMXStructure(pts=points_with_sides,residue_indices=residue_indices,
+		residue_names=residue_names,atom_names=atom_names,box=[10.,10.,10.])
+	polymer.write(state.here+'vacuum.gro')
+
+	top = GMXTopology()
+	new_mol = {'bonds':[],'angles':[],'dihedrals':[],'moleculetype':{'molname':polymer_molame,'nrexcl':3}}
+	#---monomer spec
+	monomer = [
+		{'type':'P1','mass':'60.0528','atom':'B1'},
+		{'type':'P4','mass':'60.0528','atom':'B2'},
+		{'type':'P4','mass':'60.0528','atom':'B3'}]
+	#---write atoms
+	new_mol['atoms'] = []
+	atom_counter = 1
+	for mnum in range(n_p+1):
+		new_monomer = copy.deepcopy(monomer)
+		for anum,atom in enumerate(new_monomer):
+			new_monomer[anum]['id'] = atom_counter
+			atom_counter += 1
+			new_monomer[anum]['resnr'] = new_monomer[anum]['cgnr'] = mnum+1
+			new_monomer[anum]['charge'] = '0'
+			new_monomer[anum]['resname'] = monomer_resname
+		new_mol['atoms'].extend(new_monomer)
+
+	#---! extremely crude way to write bonds -- systematize this later!
+	for mnum in range(n_p+1-1):
+		#---1-4 bond
+		new_mol['bonds'].append({'i':mnum*3+1,'length':'0.356','j':(mnum+1)*3+1,'force':'30000','funct':'1'})
+	for mnum in range(n_p+1):
+		#---1-2 and 1-3 bonds
+		new_mol['bonds'].append({'i':mnum*3+1,'length':'0.356','j':mnum*3+1+1,'force':'30000','funct':'1'})
+		new_mol['bonds'].append({'i':mnum*3+1,'length':'0.356','j':mnum*3+1+2,'force':'30000','funct':'1'})
+	#---! extremely crude method for angles
+	angle_template = {'i':0,'j':0,'k':0,'funct':2,'angle':180.0,'force':2000.0}
+	for mnum in range(n_p+1-2):
+		new_mol['angles'].append(dict(angle_template,i=mnum*3+1,j=(mnum+1)*3+1,k=(mnum+2)*3+1))
+	#---! just a placeholder: 1-2-3 angle is 180 -- this keeps the sidechains in a straight line across back
+	angle_template_flank = {'i':0,'j':0,'k':0,'funct':2,'angle':180.0,'force':2000.0}
+	for mnum in range(n_p+1):
+		new_mol['angles'].append(dict(angle_template_flank,i=mnum*3+1+1,j=mnum*3+1+0,k=mnum*3+1+2))
+	#---! just a placeholder: 1-2-4 angle which orients the side chain normal to the backbone
+	angle_template_flank_ortho = {'i':0,'j':0,'k':0,'funct':2,'angle':90.0,'force':2000.0}
+	for mnum in range(n_p+1-1):
+		new_mol['angles'].append(dict(angle_template_flank_ortho,i=mnum*3+1+1,j=mnum*3+1+0,k=(mnum+1)*3+1))
+		new_mol['angles'].append(dict(angle_template_flank_ortho,i=mnum*3+1+2,j=mnum*3+1+0,k=(mnum+1)*3+1))
+	#---! HANDLE THE LAST ONE MANUALLY
+	mnum = n_p-1
+	new_mol['angles'].append(dict(angle_template_flank_ortho,i=(mnum+1)*3+1+1,j=mnum*3+1+0,k=(mnum+1)*3+1))
+	new_mol['angles'].append(dict(angle_template_flank_ortho,i=(mnum+1)*3+1+2,j=mnum*3+1+0,k=(mnum+1)*3+1))
+	#---! extremely crude method for dihedrals
+	dihedral_template = {'i':0,'j':0,'k':0,'l':0,'funct':1,'angle':0.0,'force':2000.0,'multiplicity':1}
+	for mnum in range(n_p+1-3):
+		new_mol['dihedrals'].append(dict(dihedral_template,
+			i=mnum*3+1,j=(mnum+1)*3+1,k=(mnum+2)*3+1,l=(mnum+3)*3+1))
+
+
+	top.add_molecule(**{polymer_molame:new_mol})
+	top.write(state.here+'dextran.itp')
+	state.itp = ['dextran.itp']
+	component(polymer_molame,count=1)
+	#import ipdb;ipdb.set_trace()
+	#source ~/libs/cg_bonds.tcl;cg_bonds -gmx ~/libs/gmxdump -tpr s01-melt/em-vacuum-steep.tpr

@@ -78,7 +78,7 @@ USAGE NOTES:|
 			this is part of why we want to do the off-lattice version
 """},
 
-'dextran_dev':{
+'dextran_dev_off_lattice_36mer':{
 #####
 ####
 ###
@@ -133,6 +133,64 @@ place specs:|{
 
 USAGE NOTES:|
 	copied from dextran_dev_pentamer
+"""},
+
+'dextran_martini_dev':{
+#####
+####
+###
+##
+#
+'tags':['cgmd'],
+'script':'script-cg-gel.py',
+'params':'parameters.py',
+'extensions':['codes/melts.py'],
+'settings':"""
+
+step: melt
+polymer name: AGLC
+equilibration: ""
+force field: martini-sources
+files: []
+aglc source: None
+water buffer: 1.2
+on lattice: False
+review3d: False
+sol: W
+melt settings:|{
+	'n_p':36,
+	'a0':0.356,
+	'angle':90.0,
+	'torsion':90.0,
+	}
+
+sources:| [
+    'inputs/martini/martini-sources.ff',
+    ]
+
+mdp specs:|{
+	'group':'cgmd-polymers',
+	'mdps':{
+		'input-em-steep-in.mdp':[{'integrator':'steep'}],
+		}
+	}
+
+place specs:|{
+	'monomer':'algc.gro',
+	'repeat_unit':{'end':'O6','start':'O1','next':'C1'},
+	'linkage_delete_atoms':[['HO6'],['HO1','O1']],
+	'atom_name_changes':[
+		{'from':'OC311','from_charge':-0.65,'to_charge':-0.36,
+		'to':'OC301','atom':'O6','which':'previous'},
+		{'from':'CC3162','from_charge':0.34,'to_charge':0.29,
+		'to':'CC3162','atom':'C1','which':'next'},
+		{'from':'CC321','from_charge':0.050,'to_charge':0.00,
+		'to':'CC321','atom':'C6','which':'previous'}]}
+
+USAGE NOTES:|
+	copied from dextran_dev_off_lattice_36mer
+	goal is to simulation a crude version of martini poly-glucose chain (maybe without bimodal torsions)
+		as a starting point for backmapping the atomistic model of dextran
 """},
 
 }
