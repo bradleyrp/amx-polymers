@@ -337,7 +337,7 @@
 			},
 		},
 	},
-#---MDP settings group for atomistic CHARMM simulations
+#---MDP settings group for atomistic CHARMM simulations (ryan thinks this comment is wrong and this is MARTINI?)
 'cgmd-polymers':{
 	#---defaults for redundant options (use None if only one)
 	'defaults':{
@@ -382,7 +382,7 @@
 		'ref_t':300,
 		'Pcoupl':'Berendsen',
 		'Pcoupltype':'isotropic',
-		'tau_p':1.0,
+		'tau_p':2.0,
 		'compressibility':'5e-6',
 		'ref_p':1.0,
 		},

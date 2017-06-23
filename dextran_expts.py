@@ -149,21 +149,22 @@ USAGE NOTES:|
 
 step: melt
 polymer name: AGLC
-equilibration: ""
+equilibration: ['short']
 force field: martini-sources
-files: []
 aglc source: None
-water buffer: 1.2
+water buffer: 8
 on lattice: False
 review3d: False
 sol: W
+solvent: martini-water
 melt settings:|{
 	'n_p':36,
 	'a0':0.356,
 	'angle':90.0,
-	'torsion':90.0,
+	'torsion':142.0,
 	}
 
+files: ['@martini/library-general-structs/martini-water.gro']
 sources:| [
     'inputs/martini/martini-sources.ff',
     ]
@@ -172,6 +173,8 @@ mdp specs:|{
 	'group':'cgmd-polymers',
 	'mdps':{
 		'input-em-steep-in.mdp':[{'integrator':'steep'}],
+		'input-md-short-eq-in.mdp':[{'dt':0.001}],
+		'input-md-in.mdp':[],
 		}
 	}
 
@@ -191,6 +194,24 @@ USAGE NOTES:|
 	copied from dextran_dev_off_lattice_36mer
 	goal is to simulation a crude version of martini poly-glucose chain (maybe without bimodal torsions)
 		as a starting point for backmapping the atomistic model of dextran
+"""},
+
+'dextran_martini_dev_tuner':{
+#####
+####
+###
+##
+#
+'tags':['cgmd'],
+'script':'script-tune-cg.py',
+'params':'parameters.py',
+'extensions':['codes/melts.py','codes/melts_tuner.py'],
+'settings':"""
+
+step: tune
+
+USAGE NOTES:|
+	THIS IS A TEMPORARY PLACEHOLDER TO TUNE A NEW MARTINI MODEL FOR DEXTRAN FROM THE PENTAMER IN CHARMM
 """},
 
 }

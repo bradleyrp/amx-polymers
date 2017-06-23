@@ -848,7 +848,8 @@ def make_cg_gel(name='melt',**kwargs):
 	atom_names = np.tile(['B1','B2','B3'],n_p+1)
 	polymer = GMXStructure(pts=points_with_sides,residue_indices=residue_indices,
 		residue_names=residue_names,atom_names=atom_names,box=[10.,10.,10.])
-	polymer.write(state.here+'vacuum.gro')
+	polymer.write(state.here+'%s-built.gro'%name)
+	gmx('editconf',structure='%s-built'%name,gro=name,c=True,log='editconf-center-polymer')
 
 	top = GMXTopology()
 	new_mol = {'bonds':[],'angles':[],'dihedrals':[],'moleculetype':{'molname':polymer_molame,'nrexcl':3}}
@@ -870,41 +871,70 @@ def make_cg_gel(name='melt',**kwargs):
 			new_monomer[anum]['resname'] = monomer_resname
 		new_mol['atoms'].extend(new_monomer)
 
+	#---SECTION 1
 	#---! extremely crude way to write bonds -- systematize this later!
 	for mnum in range(n_p+1-1):
 		#---1-4 bond
-		new_mol['bonds'].append({'i':mnum*3+1,'length':'0.356','j':(mnum+1)*3+1,'force':'30000','funct':'1'})
+		new_mol['bonds'].append({'i':mnum*3+1,'length':'0.598','j':(mnum+1)*3+1,'force':'3000','funct':'1'})
+	
+	#---SECTION 2
 	for mnum in range(n_p+1):
 		#---1-2 and 1-3 bonds
-		new_mol['bonds'].append({'i':mnum*3+1,'length':'0.356','j':mnum*3+1+1,'force':'30000','funct':'1'})
-		new_mol['bonds'].append({'i':mnum*3+1,'length':'0.356','j':mnum*3+1+2,'force':'30000','funct':'1'})
+		new_mol['bonds'].append({'i':mnum*3+1,'length':'0.598','j':mnum*3+1+1,'force':'3000','funct':'1'})
+		new_mol['bonds'].append({'i':mnum*3+1,'length':'0.598','j':mnum*3+1+2,'force':'3000','funct':'1'})
+
+	#---SECTION 3
 	#---! extremely crude method for angles
 	angle_template = {'i':0,'j':0,'k':0,'funct':2,'angle':180.0,'force':2000.0}
 	for mnum in range(n_p+1-2):
 		new_mol['angles'].append(dict(angle_template,i=mnum*3+1,j=(mnum+1)*3+1,k=(mnum+2)*3+1))
+
+	#---SECTION 4
 	#---! just a placeholder: 1-2-3 angle is 180 -- this keeps the sidechains in a straight line across back
 	angle_template_flank = {'i':0,'j':0,'k':0,'funct':2,'angle':180.0,'force':2000.0}
 	for mnum in range(n_p+1):
 		new_mol['angles'].append(dict(angle_template_flank,i=mnum*3+1+1,j=mnum*3+1+0,k=mnum*3+1+2))
+
+	#---SECTION 5
 	#---! just a placeholder: 1-2-4 angle which orients the side chain normal to the backbone
 	angle_template_flank_ortho = {'i':0,'j':0,'k':0,'funct':2,'angle':90.0,'force':2000.0}
 	for mnum in range(n_p+1-1):
 		new_mol['angles'].append(dict(angle_template_flank_ortho,i=mnum*3+1+1,j=mnum*3+1+0,k=(mnum+1)*3+1))
 		new_mol['angles'].append(dict(angle_template_flank_ortho,i=mnum*3+1+2,j=mnum*3+1+0,k=(mnum+1)*3+1))
-	#---! HANDLE THE LAST ONE MANUALLY
-	mnum = n_p-1
-	new_mol['angles'].append(dict(angle_template_flank_ortho,i=(mnum+1)*3+1+1,j=mnum*3+1+0,k=(mnum+1)*3+1))
-	new_mol['angles'].append(dict(angle_template_flank_ortho,i=(mnum+1)*3+1+2,j=mnum*3+1+0,k=(mnum+1)*3+1))
+
+	#---SECTION 6
 	#---! extremely crude method for dihedrals
-	dihedral_template = {'i':0,'j':0,'k':0,'l':0,'funct':1,'angle':0.0,'force':2000.0,'multiplicity':1}
+	dihedral_template = {'i':0,'j':0,'k':0,'l':0,'funct':1,'angle':142.0,'force':2000.0,'multiplicity':1}
 	for mnum in range(n_p+1-3):
 		new_mol['dihedrals'].append(dict(dihedral_template,
 			i=mnum*3+1,j=(mnum+1)*3+1,k=(mnum+2)*3+1,l=(mnum+3)*3+1))
 
+	"""
+	history of manipulating which bonds get included:
+		2017.06.15
+			started with a previous run that only had sections 1-4
+				and the backbone was pretty straight 
+				but the sidechains were wobbly (see "arch-v024-before-adding-124-angles")
+			while reviewing the method, we added section 5 
+				and noticed that the sidechains were less wobbly
+				for some reason the dihedrals of the sidechains looked really straight
+				but there were no dihedrals in the itp file. weird.
+			added section 6 and made the torsion for the backbone 142.0 from the melts_tuner.py
+	"""
+
+	#---!!!
+	if False:
+
+		#---! HANDLE THE LAST ONE MANUALLY
+		mnum = n_p-1
+		new_mol['angles'].append(dict(angle_template_flank_ortho,i=(mnum+1)*3+1+1,j=mnum*3+1+0,k=(mnum+1)*3+1))
+		new_mol['angles'].append(dict(angle_template_flank_ortho,i=(mnum+1)*3+1+2,j=mnum*3+1+0,k=(mnum+1)*3+1))
 
 	top.add_molecule(**{polymer_molame:new_mol})
 	top.write(state.here+'dextran.itp')
 	state.itp = ['dextran.itp']
 	component(polymer_molame,count=1)
+
+
 	#import ipdb;ipdb.set_trace()
-	#source ~/libs/cg_bonds.tcl;cg_bonds -gmx ~/libs/gmxdump -tpr s01-melt/em-vacuum-steep.tpr
+	#source ~/libs/cg_bonds.tcl;cg_bonds -gmx ~/libs/gmxdump -tpr s01-melt/md-short.tpr
