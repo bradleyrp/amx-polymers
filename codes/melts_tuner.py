@@ -116,6 +116,7 @@ def get_angle_torsion_distn_from_pentamer():
 			angle = vecangle(project_ba_bc,project_cd_bc)
 			torsion_angles[tt,fr] = angle
 
+<<<<<<< HEAD
 	#---get the backbone distances
 	backbone_positions = np.arange(1,15,3)
 	backbone_inds = np.transpose((backbone_positions[:-1],backbone_positions[1:]))
@@ -132,3 +133,8 @@ def get_angle_torsion_distn_from_pentamer():
 	print('backbone bond distance is %.3f'%backbone_distances.mean())
 	
 	import ipdb;ipdb.set_trace()
+=======
+	import ipdb;ipdb.set_trace()
+
+	print('TORSION IS %.1f'%torsion_angles.mean())
+>>>>>>> 5c4dc494c25a6aad4c18ad60818e2e3c4c59bf1b
