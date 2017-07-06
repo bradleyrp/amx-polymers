@@ -32,7 +32,8 @@ def get_angle_torsion_distn_from_pentamer():
 	#---! assume only a single AGLC molecule
 	resnums = np.sort(np.unique(sel.atoms.resnums))
 	term_start,term_end = resnums[0],resnums[-1]
-	connector = lambda resnum: {0:'ERROR!',1:'terminus_start',len(resnums):'terminus_end'}.get(resnum,'middle') 
+	connector = lambda resnum: {0:'ERROR!',1:'terminus_start',
+		len(resnums):'terminus_end'}.get(resnum,'middle') 
 
 	#---iterate over residues to make sure we have mapped everything
 	for resnum in np.unique(sel.atoms.resnums):
@@ -65,20 +66,30 @@ def get_angle_torsion_distn_from_pentamer():
 			atoms_in_bead = np.sort([map_resnum_name_index[(resnum,atom)] for atom in atoms.split()])
 			cg_model.append([resnum,bead_name,atoms_in_bead])
 
+	lenscale = 10.0
 	mass_table = {'H':1.008,'C':12.011,'O':15.999,'N':14.007,'P':30.974}
 
 	nframes = len(uni.trajectory)
 	frame_skip = 100
 	coords_red = np.zeros((len(range(0,nframes,frame_skip)),len(cg_model),3))
+	#---MAIN LOOP FOR BACKMAPPING
 	for ff,fr in enumerate(range(0,nframes,frame_skip)):
+		uni.trajectory[fr]
 		for anum,(rnum,bead,atom_inds) in enumerate(cg_model):
 			status('computing reduced coordinates',i=fr,looplen=nframes,tag='compute')
-			uni.trajectory[fr]
-			pos = sel.positions[atom_inds]/10.
-			weights = np.array([mass_table[i[0]] for i in sel.names[atom_inds]])
-			com = (pos*np.tile(weights,(3,1)).T/np.sum(weights)).mean(axis=0)
-			#---! COG not COM below
+			pos = sel.positions[atom_inds]/lenscale
+			#---! turning off COM and using COG for now
+			#weights = np.array([mass_table[i[0]] for i in sel.names[atom_inds]])
+			#com = (pos*np.tile(weights,(3,1)).T/np.sum(weights)).mean(axis=0)
+			#com = pos.mean(axis=0)
+			#---compute the center of mass
 			coords_red[ff][anum] = pos.mean(axis=0)
+
+	#---save the standard coordinates
+	coords = np.zeros((len(range(0,nframes,frame_skip)),len(sel),3))
+	for ff,fr in enumerate(range(0,nframes,frame_skip)):
+		uni.trajectory[fr]
+		coords[ff] = sel.positions/lenscale
 
 	residue_indices = list(zip(*cg_model)[0])
 	atom_names = list(zip(*cg_model)[1])
@@ -116,6 +127,113 @@ def get_angle_torsion_distn_from_pentamer():
 			angle = vecangle(project_ba_bc,project_cd_bc)
 			torsion_angles[tt,fr] = angle
 
+	#---get the backbone distances
+	backbone_positions = np.arange(1,15,3)
+	backbone_inds = np.transpose((backbone_positions[:-1],backbone_positions[1:]))
+	backbone_distances = np.zeros((len(backbone_inds),len(coords_red)))
+	for fr in range(len(coords_red)):
+		status('computing backbone distances',i=fr,looplen=len(coords_red),tag='compute')
+		for ii,inds in enumerate(backbone_inds):
+			pts = coords_red[fr,inds]
+			dist = np.linalg.norm(pts[1]-pts[0])
+			backbone_distances[ii,fr] = dist
+
+	print('summary!\n')
+	print('backbone torsion is %.1f'%torsion_angles.mean())
+	print('backbone bond distance is %.3f'%backbone_distances.mean())
+
+	"""
+	prototyping a backmapper code
+	we want to get the average cage of atomistic atoms around the coarse-grained beads
+	this must happen at each frame because the centroids are computed at each frame
+	developing the forward mapping starts here ca 2017.6.23
+	removed center-of-mass and used COG to match the coords and coords_red exactly:
+		ipdb> coords_red[fr][0]
+		array([ 1.23733342,  0.31583333,  0.93133336])
+		ipdb> coords[fr][cg_model[0][2]].mean(axis=0)
+		array([ 1.23733338,  0.31583335,  0.93133339])
+	rather than writing the code to load the new cgmd simulation
+		we are first going to try backmapping onto another frame of the forward-mapped aamd pentamer
+
+	"""
+
+	fr = 10
+	fr_alt = 80
+
+	#---get a coarse model from an alternate frame
+	fine = coords[fr]
+	coarse = coords_red[fr]
+	#---we wish to backmap onto the target CGMD structure
+	target = coords_red[fr_alt]
+	#---loop over residues
+	new_pts = []
+	resnums = np.array(zip(*cg_model)[0])
+	for resnum in list(set(resnums)):
+		triplet_ind_coarse = np.where(resnums==resnum)[0]
+		triplet_ind_fine = [cg_model[i][2] for i in triplet_ind_coarse]
+		coarse_sub = coarse[triplet_ind_coarse]
+		fine_sub = fine[np.concatenate(triplet_ind_fine)]
+		#---we wish to backmap onto the target CGMD structure
+		target = coords_red[fr_alt][triplet_ind_coarse]
+		#---perform the alignment between two cgmd frames
+		alignment = align(target,coarse_sub)
+		#---move fine to the origin
+		fine_sub -= fine_sub.mean(axis=0)
+		#---rotate fine
+		fine_rotated = apply_rotation(fine_sub,alignment['rm'])
+		#---move fine to the target
+		fine_backmapped = fine_rotated + alignment['origin']
+		new_pts.append(fine_backmapped)
+	new_pts = np.concatenate(new_pts)
+
+	#---hack in the new points
+	v11struct = GMXStructure('../melt-v011/s01-melt/system.gro')
+	v11struct.points[:len(new_pts)] = new_pts
+	v11struct.write('hack_structure3.gro')
+	v11struct.points[:len(new_pts)] = coords[fr_alt]
+	v11struct.write('hack_structure4.gro')
+
+	if False:
+
+		#---get a coarse model from an alternate frame
+		fine = coords[fr]
+		coarse = coords_red[fr]
+		#---we wish to backmap onto the target CGMD structure
+		target = coords_red[fr_alt]
+
+		#---perform the alignment between two cgmd frames
+		alignment = align(target,coarse)
+		#---move fine to the origin
+		fine -= fine.mean(axis=0)
+		#---rotate fine
+		fine_rotated = apply_rotation(fine,alignment['rm'])
+		#---move fine to the target
+		fine_backmapped = fine_rotated + alignment['origin']
+
+		#---! RYAN THIS IS A HACK YOU HAVE TO FIX THIS REALLY SOON!
+		v11struct = GMXStructure('../melt-v011/s01-melt/system.gro')
+		#---hack in the new points
+		v11struct.points[:len(fine_backmapped)] = fine_backmapped
+		v11struct.write('hack_structure.gro')
+		v11struct.points[:len(fine_backmapped)] = coords[fr_alt]
+		v11struct.write('hack_structure2.gro')
+
 	import ipdb;ipdb.set_trace()
 
-	print('TORSION IS %.1f'%torsion_angles.mean())
+def align(ref,target):
+	"""Perform an alignment relative to the reference (first) structure."""
+	r0,r1 = np.array(ref),np.array(target)
+	origin = r0.mean(axis=0)
+	r0 -= origin
+	r1 -= r1.mean(axis=0)
+	U,s,Vt = np.linalg.svd(np.dot(r0.T,r1))
+	signer = np.identity(3)
+	signer[2,2] = np.sign(np.linalg.det(np.dot(Vt.T,U)))
+	RM = np.dot(np.dot(U,signer),Vt)
+	r1p = apply_rotation(r1,RM)
+	rmsd = np.sqrt(np.mean(np.sum((r0.T-np.dot(RM,r1.T))**2,axis=0)))
+	return {'new':r1p,'rm':RM,'origin':origin,'rmsd':rmsd}
+
+def apply_rotation(pts,matrix):
+	"""Standard way to apply a rotation (possibly calculated from align)."""
+	return np.dot(matrix,pts.T).T

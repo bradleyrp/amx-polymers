@@ -934,7 +934,3 @@ def make_cg_gel(name='melt',**kwargs):
 	top.write(state.here+'dextran.itp')
 	state.itp = ['dextran.itp']
 	component(polymer_molame,count=1)
-
-
-	#import ipdb;ipdb.set_trace()
-	#source ~/libs/cg_bonds.tcl;cg_bonds -gmx ~/libs/gmxdump -tpr s01-melt/md-short.tpr
