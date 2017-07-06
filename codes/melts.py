@@ -875,6 +875,14 @@ def make_cg_gel(name='melt',**kwargs):
 	#---! extremely crude way to write bonds -- systematize this later!
 	for mnum in range(n_p+1-1):
 		#---1-4 bond
+<<<<<<< HEAD
+		new_mol['bonds'].append({'i':mnum*3+1,'length':'0.356','j':(mnum+1)*3+1,'force':'3000','funct':'1'})
+	for mnum in range(n_p+1):
+		#---1-2 and 1-3 bonds
+		new_mol['bonds'].append({'i':mnum*3+1,'length':'0.356','j':mnum*3+1+1,'force':'3000','funct':'1'})
+		new_mol['bonds'].append({'i':mnum*3+1,'length':'0.356','j':mnum*3+1+2,'force':'3000','funct':'1'})
+
+=======
 		new_mol['bonds'].append({'i':mnum*3+1,'length':'0.598','j':(mnum+1)*3+1,'force':'3000','funct':'1'})
 	
 	#---SECTION 2
@@ -884,23 +892,33 @@ def make_cg_gel(name='melt',**kwargs):
 		new_mol['bonds'].append({'i':mnum*3+1,'length':'0.598','j':mnum*3+1+2,'force':'3000','funct':'1'})
 
 	#---SECTION 3
+>>>>>>> 5c4dc494c25a6aad4c18ad60818e2e3c4c59bf1b
 	#---! extremely crude method for angles
 	angle_template = {'i':0,'j':0,'k':0,'funct':2,'angle':180.0,'force':2000.0}
 	for mnum in range(n_p+1-2):
 		new_mol['angles'].append(dict(angle_template,i=mnum*3+1,j=(mnum+1)*3+1,k=(mnum+2)*3+1))
 
+<<<<<<< HEAD
+=======
 	#---SECTION 4
+>>>>>>> 5c4dc494c25a6aad4c18ad60818e2e3c4c59bf1b
 	#---! just a placeholder: 1-2-3 angle is 180 -- this keeps the sidechains in a straight line across back
 	angle_template_flank = {'i':0,'j':0,'k':0,'funct':2,'angle':180.0,'force':2000.0}
 	for mnum in range(n_p+1):
 		new_mol['angles'].append(dict(angle_template_flank,i=mnum*3+1+1,j=mnum*3+1+0,k=mnum*3+1+2))
 
+<<<<<<< HEAD
+=======
 	#---SECTION 5
+>>>>>>> 5c4dc494c25a6aad4c18ad60818e2e3c4c59bf1b
 	#---! just a placeholder: 1-2-4 angle which orients the side chain normal to the backbone
 	angle_template_flank_ortho = {'i':0,'j':0,'k':0,'funct':2,'angle':90.0,'force':2000.0}
 	for mnum in range(n_p+1-1):
 		new_mol['angles'].append(dict(angle_template_flank_ortho,i=mnum*3+1+1,j=mnum*3+1+0,k=(mnum+1)*3+1))
 		new_mol['angles'].append(dict(angle_template_flank_ortho,i=mnum*3+1+2,j=mnum*3+1+0,k=(mnum+1)*3+1))
+<<<<<<< HEAD
+
+=======
 
 	#---SECTION 6
 	#---! extremely crude method for dihedrals
@@ -922,6 +940,7 @@ def make_cg_gel(name='melt',**kwargs):
 			added section 6 and made the torsion for the backbone 142.0 from the melts_tuner.py
 	"""
 
+>>>>>>> 5c4dc494c25a6aad4c18ad60818e2e3c4c59bf1b
 	#---!!!
 	if False:
 
@@ -929,6 +948,14 @@ def make_cg_gel(name='melt',**kwargs):
 		mnum = n_p-1
 		new_mol['angles'].append(dict(angle_template_flank_ortho,i=(mnum+1)*3+1+1,j=mnum*3+1+0,k=(mnum+1)*3+1))
 		new_mol['angles'].append(dict(angle_template_flank_ortho,i=(mnum+1)*3+1+2,j=mnum*3+1+0,k=(mnum+1)*3+1))
+<<<<<<< HEAD
+		#---! extremely crude method for dihedrals
+		dihedral_template = {'i':0,'j':0,'k':0,'l':0,'funct':1,'angle':0.0,'force':2000.0,'multiplicity':1}
+		for mnum in range(n_p+1-3):
+			new_mol['dihedrals'].append(dict(dihedral_template,
+				i=mnum*3+1,j=(mnum+1)*3+1,k=(mnum+2)*3+1,l=(mnum+3)*3+1))
+=======
+>>>>>>> 5c4dc494c25a6aad4c18ad60818e2e3c4c59bf1b
 
 	top.add_molecule(**{polymer_molame:new_mol})
 	top.write(state.here+'dextran.itp')

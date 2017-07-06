@@ -173,7 +173,11 @@ mdp specs:|{
 	'group':'cgmd-polymers',
 	'mdps':{
 		'input-em-steep-in.mdp':[{'integrator':'steep'}],
+<<<<<<< HEAD
+		'input-md-short-eq-in.mdp':[{'dt':0.001,'tau_p':1.0,'compressibility':'5e-5'}],
+=======
 		'input-md-short-eq-in.mdp':[{'dt':0.001}],
+>>>>>>> 5c4dc494c25a6aad4c18ad60818e2e3c4c59bf1b
 		'input-md-in.mdp':[],
 		}
 	}
