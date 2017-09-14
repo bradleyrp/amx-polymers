@@ -173,11 +173,7 @@ mdp specs:|{
 	'group':'cgmd-polymers',
 	'mdps':{
 		'input-em-steep-in.mdp':[{'integrator':'steep'}],
-<<<<<<< HEAD
 		'input-md-short-eq-in.mdp':[{'dt':0.001,'tau_p':1.0,'compressibility':'5e-5'}],
-=======
-		'input-md-short-eq-in.mdp':[{'dt':0.001}],
->>>>>>> 5c4dc494c25a6aad4c18ad60818e2e3c4c59bf1b
 		'input-md-in.mdp':[],
 		}
 	}
@@ -217,5 +213,40 @@ step: tune
 USAGE NOTES:|
 	THIS IS A TEMPORARY PLACEHOLDER TO TUNE A NEW MARTINI MODEL FOR DEXTRAN FROM THE PENTAMER IN CHARMM
 """},
+
+'dextran_scale_switching':{
+#####
+####
+###
+##
+#
+'metarun':[
+{'step':'gel','do':'dextran_martini_dev','settings':"""
+
+water buffer: 2
+melt settings:|{
+	'n_p':8,
+	'a0':0.356,
+	'angle':90.0,
+	'torsion':142.0,
+	}
+
+USAGE NOTES:|
+	created on 2017.07.06.1400
+	summary of work to date:
+		dextran_martini_dev_tuner
+			reads in the pentamer in v011
+			has a section at the end that backmaps
+				from one v011 frame
+				to another v011 frame that has been coarse-grained
+			and hence represents the simplest possible backmapping we could do
+		dextran_martini_dev
+			make a larger N-mer of dextran Martini
+			with reasonable guesses about the various parameters
+	purpose of this experiment:
+		1. make the gel with best-guess parameters
+		2. take a frame from that gel and backmap the atomistic coordinates onto them
+		3. test for stability in aamd? if unstable, then try iterating.
+"""},]}
 
 }
