@@ -6,7 +6,7 @@
 ###
 ##
 #
-'tags':['aamd'],
+'tags':['aamd','tag_dev'],
 'script':'script-gel.py',
 'params':'parameters.py',
 'extensions':['codes/melts.py'],
@@ -84,7 +84,7 @@ USAGE NOTES:|
 ###
 ##
 #
-'tags':['aamd'],
+'tags':['aamd','tag_dev'],
 'script':'script-gel.py',
 'params':'parameters.py',
 'extensions':['codes/melts.py'],
@@ -141,7 +141,7 @@ USAGE NOTES:|
 ###
 ##
 #
-'tags':['cgmd'],
+'tags':['cgmd','tag_dev','tested_2017.09.14'],
 'script':'script-cg-gel.py',
 'params':'parameters.py',
 'extensions':['codes/melts.py'],
@@ -202,7 +202,7 @@ USAGE NOTES:|
 ###
 ##
 #
-'tags':['cgmd'],
+'tags':['cgmd','tag_dev'],
 'script':'script-tune-cg.py',
 'params':'parameters.py',
 'extensions':['codes/melts.py','codes/melts_tuner.py'],
@@ -220,6 +220,7 @@ USAGE NOTES:|
 ###
 ##
 #
+'tags':['tag_dev','aamd_cgmd'],
 'metarun':[
 {'step':'gel','do':'dextran_martini_dev','settings':"""
 
