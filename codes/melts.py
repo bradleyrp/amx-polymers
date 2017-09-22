@@ -903,11 +903,12 @@ def make_cg_gel(name='melt',**kwargs):
 		new_mol['angles'].append(dict(angle_template_flank_ortho,i=mnum*3+1+2,j=mnum*3+1+0,k=(mnum+1)*3+1))
 
 	#---SECTION 6
-	#---! extremely crude method for dihedrals
-	dihedral_template = {'i':0,'j':0,'k':0,'l':0,'funct':1,'angle':142.0,'force':2000.0,'multiplicity':1}
-	for mnum in range(n_p+1-3):
-		new_mol['dihedrals'].append(dict(dihedral_template,
-			i=mnum*3+1,j=(mnum+1)*3+1,k=(mnum+2)*3+1,l=(mnum+3)*3+1))
+	if False:
+		#---! extremely crude method for dihedrals
+		dihedral_template = {'i':0,'j':0,'k':0,'l':0,'funct':1,'angle':142.0,'force':2000.0,'multiplicity':1}
+		for mnum in range(n_p+1-3):
+			new_mol['dihedrals'].append(dict(dihedral_template,
+				i=mnum*3+1,j=(mnum+1)*3+1,k=(mnum+2)*3+1,l=(mnum+3)*3+1))
 
 	"""
 	history of manipulating which bonds get included:
