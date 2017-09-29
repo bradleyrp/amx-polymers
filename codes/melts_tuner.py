@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import os
 import numpy as np
 import MDAnalysis
 import matplotlib as mpl
@@ -218,7 +219,12 @@ def get_angle_torsion_distn_from_pentamer():
 		v11struct.points[:len(fine_backmapped)] = coords[fr_alt]
 		v11struct.write('hack_structure2.gro')
 
-	import ipdb;ipdb.set_trace()
+	#---save for next step
+	np.savetxt(state.here+'fine.dat',fine)
+	np.savetxt(state.here+'coarse.dat',coarse)
+	with open(state.here+'cg_model.dat','w') as fp: 
+		cg_model_python = [[int(i),str(j),list(k)] for i,j,k in cg_model]
+		fp.write(str(cg_model_python))
 
 def align(ref,target):
 	"""Perform an alignment relative to the reference (first) structure."""
@@ -237,3 +243,55 @@ def align(ref,target):
 def apply_rotation(pts,matrix):
 	"""Standard way to apply a rotation (possibly calculated from align)."""
 	return np.dot(matrix,pts.T).T
+
+def dextran_backmapper():
+	"""..."""
+	#---! state.before is not working !!!
+	prev_dn = 's01-tune'
+	with open(os.path.join(prev_dn,'cg_model.dat')) as fp: cg_model = eval(fp.read())
+	fine = np.loadtxt(os.path.join(prev_dn,'fine.dat'))
+	coarse = np.loadtxt(os.path.join(prev_dn,'coarse.dat'))
+	#---get a single frame from another cgmd run
+	source = '../melt-v027-dextran-scale-switching-coarse-8mer/s01-melt/md.part0001.gro'
+	struct = GMXStructure(source)
+	#---backmap the novel frame
+	#---! the following block is copied in from pentamer
+	target = struct.points[struct.select('resname AGLC')]
+
+	#---loop over residues
+	new_pts = []
+	resnums = np.array(zip(*cg_model)[0])
+
+	#---formulate a canonical model fine-grained residue from the "fine" points
+	canon_fine = np.array([cg_model[i][2] for i in [4,5,6]])
+	canon_coarse = np.where(resnums==2)[0]
+
+	#---modification from the pentamer routine to look over target resnums
+	resnums = struct.residue_indices[struct.select('resname AGLC')]
+	for resnum in list(set(resnums)):
+		triplet_ind_coarse = np.where(resnums==resnum)[0]
+		#---! previous 1-1: triplet_ind_fine = [cg_model[i][2] for i in triplet_ind_coarse]
+		#---select a "model" fine residue to map onto the coarse one
+		triplet_ind_fine = canon_fine
+		#---! the other half of the mapping ...
+		coarse_sub = coarse[canon_coarse]
+		fine_sub = fine[np.concatenate(triplet_ind_fine)]
+		#---we wish to backmap onto the target CGMD structure
+		target_sub = target[triplet_ind_coarse]
+		#---perform the alignment between two cgmd frames
+		alignment = align(target_sub,coarse_sub)
+		#---move fine to the origin
+		fine_sub -= fine_sub.mean(axis=0)
+		#---rotate fine
+		fine_rotated = apply_rotation(fine_sub,alignment['rm'])
+		#---move fine to the target
+		fine_backmapped = fine_rotated + alignment['origin']
+		new_pts.append(fine_backmapped)
+	new_pts = np.concatenate(new_pts)
+
+	#---hack in the new points
+	v11struct = GMXStructure('../melt-v011/s01-melt/system.gro')
+	v11struct.points[:len(new_pts)] = new_pts
+	v11struct.write('backmapped_8mer_possibly.gro')
+	import ipdb;ipdb.set_trace()
+

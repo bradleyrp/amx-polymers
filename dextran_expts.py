@@ -197,6 +197,25 @@ place specs:|{
 
 """},
 
+'dextran_coarse_tuner_basic':{
+#####
+####
+###
+##
+#
+'tags':['cgmd','dev'],
+'script':'script-tune-cg.py',
+'params':'parameters.py',
+'extensions':['codes/melts.py','codes/melts_tuner.py'],
+'settings':"""
+step: tune
+method style: basic
+
+USAGE NOTES:|
+	temporary placeholder for tuning a new MARTINI model for dextran based on the pentamer in CHARMM
+
+"""},
+
 'dextran_coarse_tuner':{
 #####
 ####
@@ -209,6 +228,7 @@ place specs:|{
 'extensions':['codes/melts.py','codes/melts_tuner.py'],
 'settings':"""
 step: tune
+method style: advanced
 
 USAGE NOTES:|
 	temporary placeholder for tuning a new MARTINI model for dextran based on the pentamer in CHARMM
@@ -249,6 +269,17 @@ melt settings:|{
 	'angle':90.0,
 	'torsion':142.0,}
 
-"""},]}
+"""},]},
+
+'dextran_backmapping':{
+#####
+####
+###
+##
+#
+'tags':['aamd_cgmd','dev'],
+'metarun':[
+{'step':'gel','do':'dextran_coarse_tuner_basic'},
+{'step':'gel','do':'dextran_coarse_tuner'},]},
 
 }
