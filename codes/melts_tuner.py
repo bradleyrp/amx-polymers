@@ -194,6 +194,10 @@ def get_angle_torsion_distn_from_pentamer():
 	v11struct.points[:len(new_pts)] = coords[fr_alt]
 	v11struct.write('hack_structure4.gro')
 
+	#---save for next step
+	np.savetxt(state.here+'fine.dat',fine)
+	with open(state.here+'cg_model.dat','w') as fp: fp.write(str(cg_model))
+
 	if False:
 
 		#---get a coarse model from an alternate frame
