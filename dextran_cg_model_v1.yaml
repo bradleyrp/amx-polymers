@@ -1,0 +1,77 @@
+model:
+  #!? more specific style
+  style: martini
+  by_part:
+    terminus_start:
+      resname: DST
+      atoms:
+        - SB1:
+            type: P1
+            charge: 0
+            mass: 60.0528 
+        - SB2:
+            type: P1
+            charge: 0
+            mass: 60.0528 
+        - SB3:
+            type: P1
+            charge: 0
+            mass: 60.0528 
+      bonds:
+        - ['SB1','SB2']
+        - ['SB2','SB3']
+      angles:
+        - ['SB1','SB2','SB3']
+    middle:
+      resname: DMR
+      atoms:
+        - MB1:
+            type: P1
+            charge: 0
+            mass: 60.0528 
+        - MB2:
+            type: P1
+            charge: 0
+            mass: 60.0528 
+        - MB3:
+            type: P1
+            charge: 0
+            mass: 60.0528 
+      bonds:
+        - ['MB1','MB2']
+        - ['MB2','MB3']
+      angles:
+        - ['MB1','MB2','MB3']
+    terminus_end:
+      resname: DET
+      atoms:
+        - EB1:
+            type: P1
+            charge: 0
+            mass: 60.0528 
+        - EB2:
+            type: P1
+            charge: 0
+            mass: 60.0528 
+        - EB3:
+            type: P1
+            charge: 0
+            mass: 60.0528 
+      bonds:
+        - ['EB1','EB2']
+        - ['EB2','EB3']
+      angles:
+        - ['EB1','EB2','EB3']
+  between_parts:
+    #! no repetition in the nesting
+    terminus_start:
+      middle:
+        bonds:
+          - ['SB3','MB1']
+    middle:
+      middle:
+        bonds:
+          - ['MB3','MB1']
+      terminus_end:
+        bonds:
+          - ['MB3','EB1']
