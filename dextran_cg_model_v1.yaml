@@ -68,10 +68,19 @@ model:
       middle:
         bonds:
           - ['SB3','MB1']
+        angles:
+          - ['SB3','MB1','MB2']
+          - ['SB2','SB3','MB1']
     middle:
       middle:
         bonds:
           - ['MB3','MB1']
+        angles:
+          - ['MB3','MB1','MB2']
+          - ['MB2','MB3','MB1']
       terminus_end:
         bonds:
           - ['MB3','EB1']
+        angles:
+          - ['MB3','EB1','EB2']
+          - ['MB2','MB3','EB1']

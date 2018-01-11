@@ -1404,6 +1404,7 @@ class MultiScaleModel:
 		between_dict = model_spec['model'].get('between_parts',{})
 		for left,lspec in between_dict.items():
 			for right,rspec in lspec.items():
+				#---search for all bonds between adjacent residues
 				for bead_1,bead_2 in rspec.get('bonds',[]):
 					#---check all adjacent residues
 					for r1,r2 in resnums_adjacent:
@@ -1423,6 +1424,35 @@ class MultiScaleModel:
 							new_bond['force'] = 1250
 							new_bond['length'] = distances.mean()
 							bonds.append(new_bond)
+				#---search for all angles between adjacent residues
+				for bead_1,bead_2,bead_3 in rspec.get('angles',[]):
+					#---check all adjacent residues
+					for r1,r2 in resnums_adjacent:
+						#! first possible combination
+						match1a = get_bead_in_residue(bead_name=bead_1,resnum=r1)
+						match2a = get_bead_in_residue(bead_name=bead_2,resnum=r2)
+						match3a = get_bead_in_residue(bead_name=bead_3,resnum=r2)
+						#! second possible combination
+						match1b = get_bead_in_residue(bead_name=bead_1,resnum=r1)
+						match2b = get_bead_in_residue(bead_name=bead_2,resnum=r1)
+						match3b = get_bead_in_residue(bead_name=bead_3,resnum=r2)
+						if (match1a and match2a and match3a):
+							inds = match1a,match2a,match3a
+						elif (match1b and match2b and match3b):
+							inds = match1b,match2b,match3b
+						else: continue
+						#---if we have valid match then construct a bond
+						#! residue numbering below
+						#! note that this was nearly identical to angle constuction above
+						new_angle = dict(i=inds[0]+1,j=inds[1]+1,k=inds[2]+1)
+						new_angle['funct'] = 2
+						new_angle['force'] = 2000.
+						vecs1,vecs2 = np.array((
+							coords[:,inds[0]]-coords[:,inds[1]],
+							coords[:,inds[2]]-coords[:,inds[0]]))
+						angles_measured = np.array([vecangle(i,j) for i,j in zip(vecs1,vecs2)])
+						new_angle['angle'] = angles_measured.mean()
+						angles.append(new_angle)
 
 		#---populate the topology
 		#---! note that you have to pass in moleculetype or the ITP is incomplete
@@ -1436,7 +1466,7 @@ class MultiScaleModel:
 		we should obviously relax this requirement
 		"""
 
-		#---! development code
+		#---! development code 
 		if False:
 			#---loop over residues
 			for resnum in rep['resnums_u']:
