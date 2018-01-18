@@ -1316,6 +1316,7 @@ class MultiScaleModel:
 		pos = [np.average(positions[i],axis=0,weights=self.reps[source]['masses'][i]) 
 			for i in self.reps[target]['coarsen']]
 		return pos
+
 	def interpret_model(self,source,coords,**model_spec):
 		"""
 		Read an abstract topology definition.
@@ -1384,20 +1385,22 @@ class MultiScaleModel:
 				new_bond['length'] = distances.mean()
 				bonds.append(new_bond)
 			#---angles within residues
-			for bead_names in model_spec['model']['by_part'][resname].get('angles',[]):
-				inds = np.array([get_bead_in_residue(resnum=resnum,bead_name=bead) for bead in bead_names])
-				if any([i==None for i in inds]): 
-					raise Exception('cannot find bead names %s in residue %s'%(bead_names,resnum))
-				#! residue numbering below
-				new_angle = dict(i=inds[0]+1,j=inds[1]+1,k=inds[2]+1)
-				new_angle['funct'] = 2
-				new_angle['force'] = 2000.
-				vecs1,vecs2 = np.array((
-					coords[:,inds[0]]-coords[:,inds[1]],
-					coords[:,inds[2]]-coords[:,inds[0]]))
-				angles_measured = np.array([vecangle(i,j) for i,j in zip(vecs1,vecs2)])
-				new_angle['angle'] = angles_measured.mean()
-				angles.append(new_angle)
+			#! trying to generalize
+			if False:
+				for bead_names in model_spec['model']['by_part'][resname].get('angles',[]):
+					inds = np.array([get_bead_in_residue(resnum=resnum,bead_name=bead) for bead in bead_names])
+					if any([i==None for i in inds]): 
+						raise Exception('cannot find bead names %s in residue %s'%(bead_names,resnum))
+					#! residue numbering below
+					new_angle = dict(i=inds[0]+1,j=inds[1]+1,k=inds[2]+1)
+					new_angle['funct'] = 2
+					new_angle['force'] = 2000.
+					vecs1,vecs2 = np.array((
+						coords[:,inds[0]]-coords[:,inds[1]],
+						coords[:,inds[2]]-coords[:,inds[0]]))
+					angles_measured = np.array([vecangle(i,j) for i,j in zip(vecs1,vecs2)])
+					new_angle['angle'] = angles_measured.mean()
+					angles.append(new_angle)
 		#---handle bonds between residues
 		resnums_adjacent = [(rep['resnums_u'][i],rep['resnums_u'][i+1]) 
 			for i in range(len(rep['resnums_u'])-1)]
@@ -1425,34 +1428,78 @@ class MultiScaleModel:
 							new_bond['length'] = distances.mean()
 							bonds.append(new_bond)
 				#---search for all angles between adjacent residues
-				for bead_1,bead_2,bead_3 in rspec.get('angles',[]):
-					#---check all adjacent residues
-					for r1,r2 in resnums_adjacent:
-						#! first possible combination
-						match1a = get_bead_in_residue(bead_name=bead_1,resnum=r1)
-						match2a = get_bead_in_residue(bead_name=bead_2,resnum=r2)
-						match3a = get_bead_in_residue(bead_name=bead_3,resnum=r2)
-						#! second possible combination
-						match1b = get_bead_in_residue(bead_name=bead_1,resnum=r1)
-						match2b = get_bead_in_residue(bead_name=bead_2,resnum=r1)
-						match3b = get_bead_in_residue(bead_name=bead_3,resnum=r2)
-						if (match1a and match2a and match3a):
-							inds = match1a,match2a,match3a
-						elif (match1b and match2b and match3b):
-							inds = match1b,match2b,match3b
-						else: continue
-						#---if we have valid match then construct a bond
-						#! residue numbering below
-						#! note that this was nearly identical to angle constuction above
-						new_angle = dict(i=inds[0]+1,j=inds[1]+1,k=inds[2]+1)
-						new_angle['funct'] = 2
-						new_angle['force'] = 2000.
-						vecs1,vecs2 = np.array((
-							coords[:,inds[0]]-coords[:,inds[1]],
-							coords[:,inds[2]]-coords[:,inds[0]]))
-						angles_measured = np.array([vecangle(i,j) for i,j in zip(vecs1,vecs2)])
-						new_angle['angle'] = angles_measured.mean()
-						angles.append(new_angle)
+				if False:
+					for bead_1,bead_2,bead_3 in rspec.get('angles',[]):
+						#---check all adjacent residues
+						for r1,r2 in resnums_adjacent:
+							#! first possible combination
+							match1a = get_bead_in_residue(bead_name=bead_1,resnum=r1)
+							match2a = get_bead_in_residue(bead_name=bead_2,resnum=r2)
+							match3a = get_bead_in_residue(bead_name=bead_3,resnum=r2)
+							#! second possible combination
+							match1b = get_bead_in_residue(bead_name=bead_1,resnum=r1)
+							match2b = get_bead_in_residue(bead_name=bead_2,resnum=r1)
+							match3b = get_bead_in_residue(bead_name=bead_3,resnum=r2)
+							if (match1a and match2a and match3a):
+								inds = match1a,match2a,match3a
+							elif (match1b and match2b and match3b):
+								inds = match1b,match2b,match3b
+							else: continue
+							#---if we have valid match then construct a bond
+							#! residue numbering below
+							#! note that this was nearly identical to angle constuction above
+							new_angle = dict(i=inds[0]+1,j=inds[1]+1,k=inds[2]+1)
+							new_angle['funct'] = 2
+							new_angle['force'] = 2000.
+							vecs1,vecs2 = np.array((
+								coords[:,inds[0]]-coords[:,inds[1]],
+								coords[:,inds[2]]-coords[:,inds[0]]))
+							angles_measured = np.array([vecangle(i,j) for i,j in zip(vecs1,vecs2)])
+							new_angle['angle'] = angles_measured.mean()
+							angles.append(new_angle)
+
+		#! abstract way to define bonds WORK IN PROGRESS! 
+		if False:
+
+			class Molecule:
+				def __init__(self):
+					self.atoms = []
+				def __repr__(self):
+					return str(self.atoms)
+				def get_atom(self,num):
+					matches = [a for a in self.atoms if a.num==num]
+					if len(matches)==0: raise Exception('cannot find atom %s'%num)
+					elif len(matches)>1: raise Exception('dev. uniqueness violated!')
+					else: return matches[0]
+				def add_link(self,bond):
+					i,j = [molecule.get_atom(b) for b in bond]
+					if j not in i.neighbors: i.neighbors.append(j)
+					if i not in j.neighbors: j.neighbors.append(i)
+
+			class Atom:
+				def __init__(self,num):
+					self.num = num
+					self.neighbors = []
+				def __repr__(self):
+					return '%s: %s'%(self.num,[i.num for i in self.neighbors])
+
+			molecule = Molecule()
+			bond_list = [tuple([bond[k] for k in 'ij']) for bond in bonds]
+			for atom_id in list(set([i for j in bond_list for i in j])):
+				molecule.atoms.append(Atom(atom_id))
+			for bond in bond_list: molecule.add_link(bond)
+
+			def get_path(atoms,paths=None,distance_remaining=2):
+				if distance_remaining>0:
+					paths = [[atom] for atom in atoms]
+					for path in paths:
+						yield get_path(path[-1].neighbors,paths=[path],distance_remaining=distance_remaining-1)
+				else: yield paths
+
+			ans = get_path(molecule.atoms)
+			print(list(ans))
+
+			import ipdb;ipdb.set_trace()
 
 		#---populate the topology
 		#---! note that you have to pass in moleculetype or the ITP is incomplete
@@ -1586,7 +1633,8 @@ def forward_mapper():
 		coords_red[ff] = model.reduce(source='fine',target='coarse',positions=sel.positions/lenscale)
 
 	#---! crude method to write the coarse-grained trajectory for review
-	if False:
+	if True:
+
 		residue_indices = model.reps['coarse']['resnums']
 		atom_names = model.reps['coarse']['names']
 		residue_names = np.array(['AGC' for i in residue_indices])
