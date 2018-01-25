@@ -1346,7 +1346,7 @@ class MultiScaleModel:
 			else: return matches[0]
 		#---construct the atoms list which is required for indexing the bonds later on
 		atom_id,atoms = 1,[]
-		bonds,angles = [],[]
+		bonds,angles,dihedrals = [],[],[]
 		#---loop over residues
 		for resnum in rep['resnums_u']:
 			#---get the beads in this residue
@@ -1457,54 +1457,102 @@ class MultiScaleModel:
 							angles_measured = np.array([vecangle(i,j) for i,j in zip(vecs1,vecs2)])
 							new_angle['angle'] = angles_measured.mean()
 							angles.append(new_angle)
+		# automatically detect all possible angles 
+		class Molecule:
+			def __init__(self):
+				self.atoms = []
+			def __repr__(self):
+				return str(self.atoms)
+			def get_atom(self,num):
+				matches = [a for a in self.atoms if a.num==num]
+				if len(matches)==0: raise Exception('cannot find atom %s'%num)
+				elif len(matches)>1: raise Exception('dev. uniqueness violated!')
+				else: return matches[0]
+			def add_link(self,bond):
+				i,j = [molecule.get_atom(b) for b in bond]
+				if j not in i.neighbors: i.neighbors.append(j)
+				if i not in j.neighbors: j.neighbors.append(i)
+		class Atom:
+			def __init__(self,num):
+				self.num = num
+				self.neighbors = []
+			def __repr__(self):
+				return '%s: %s'%(self.num,[i.num for i in self.neighbors])
+		molecule = Molecule()
+		bond_list = [tuple([bond[k] for k in 'ij']) for bond in bonds]
+		for atom_id in list(set([i for j in bond_list for i in j])):
+			molecule.atoms.append(Atom(atom_id))
+		for bond in bond_list: molecule.add_link(bond)
+		def get_paths(atoms,path=None,d=3):
+			if d>0:
+				if not path: path,next_up = [],atoms
+				else: next_up = path[-1].neighbors
+				for neighbor in next_up:
+					local_path = path[:]+[neighbor]
+					for p in get_paths(atoms,path=local_path,d=d-1): yield p
+			else: yield path
 
-		#! abstract way to define bonds WORK IN PROGRESS! 
-		if False:
+		# functions for computing torsions
+		bulk_norm = lambda x: (x/np.tile(np.linalg.norm(x,axis=1),(3,1)).T)
 
-			class Molecule:
-				def __init__(self):
-					self.atoms = []
-				def __repr__(self):
-					return str(self.atoms)
-				def get_atom(self,num):
-					matches = [a for a in self.atoms if a.num==num]
-					if len(matches)==0: raise Exception('cannot find atom %s'%num)
-					elif len(matches)>1: raise Exception('dev. uniqueness violated!')
-					else: return matches[0]
-				def add_link(self,bond):
-					i,j = [molecule.get_atom(b) for b in bond]
-					if j not in i.neighbors: i.neighbors.append(j)
-					if i not in j.neighbors: j.neighbors.append(i)
-
-			class Atom:
-				def __init__(self,num):
-					self.num = num
-					self.neighbors = []
-				def __repr__(self):
-					return '%s: %s'%(self.num,[i.num for i in self.neighbors])
-
-			molecule = Molecule()
-			bond_list = [tuple([bond[k] for k in 'ij']) for bond in bonds]
-			for atom_id in list(set([i for j in bond_list for i in j])):
-				molecule.atoms.append(Atom(atom_id))
-			for bond in bond_list: molecule.add_link(bond)
-
-			def get_path(atoms,paths=None,distance_remaining=2):
-				if distance_remaining>0:
-					paths = [[atom] for atom in atoms]
-					for path in paths:
-						yield get_path(path[-1].neighbors,paths=[path],distance_remaining=distance_remaining-1)
-				else: yield paths
-
-			ans = get_path(molecule.atoms)
-			print(list(ans))
-
-			import ipdb;ipdb.set_trace()
+		# loop over angles and dihedrals
+		for nbeads in [3,4]:
+			bead_candidates = list(set([tuple(sorted([i.num for i in a])) 
+				for a in get_paths(molecule.atoms,d=nbeads)]))
+			valid_bonds = [i for i in bead_candidates if len(set(list(i)))==nbeads]
+			# loop over these bonds
+			for beads in sorted(valid_bonds):
+				if nbeads==3:
+					#! beware python 2 will reset i in a comprehension hence this is a poor index choice
+					i,j,k = beads
+					#! back to zero indexes
+					inds = [m-1 for m in beads]
+					new_angle = dict(i=i,j=j,k=k)
+					new_angle['funct'] = 2
+					new_angle['force'] = 500. # 2000 is too high for all of the bonds. need to select them
+					vecs1,vecs2 = np.array((
+						coords[:,inds[0]]-coords[:,inds[1]],
+						coords[:,inds[2]]-coords[:,inds[0]]))
+					angles_measured = np.array([vecangle(i,j) for i,j in zip(vecs1,vecs2)])
+					new_angle['angle'] = angles_measured.mean()
+					angles.append(new_angle)
+				elif nbeads==4:
+					# under development
+					#! beware python 2 will reset i in a comprehension hence this is a poor index choice
+					i,j,k,l = beads
+					#! back to zero indexes
+					inds = [m-1 for m in beads]
+					new_dihedral = dict(i=i,j=j,k=k,l=l)
+					new_dihedral['funct'] = 1
+					new_dihedral['multiplicity'] = 1 # MAY NOT REALLY BE ONE!
+					new_dihedral['force'] = 50.
+					# COMPUTE TORSIONS! CHECK THIS LATER!
+					# project the AB vector onto the BC plane
+					vecsBC = coords[:,inds[3]]-coords[:,inds[2]]
+					vecsBCn = bulk_norm(vecsBC)
+					vecsBAn = bulk_norm(coords[:,inds[2]]-coords[:,inds[1]])
+					#! bulk plane project via:
+					#! ... def planeproject(x,n): return x-np.dot(x,n)/np.linalg.norm(n)*vecnorm(n)
+					vecsBA_projected_BC = (
+						vecsBAn-np.tile(np.array([np.dot(m,n) 
+							for m,n in zip(vecsBAn,vecsBCn)]),(3,1)).T*vecsBCn)
+					# project the AB vector onto the BC plane
+					vecsCB = coords[:,inds[1]]-coords[:,inds[2]]
+					vecsCBn = bulk_norm(vecsCB)
+					vecsCDn = bulk_norm(coords[:,inds[3]]-coords[:,inds[2]])
+					vecsCD_projected_CB = (
+						vecsCDn-np.tile(np.array([np.dot(m,n) 
+							for m,n in zip(vecsCDn,vecsCBn)]),(3,1)).T*vecsCBn)
+					# take the angle difference between the two projected vectors
+					dihedrals_measured = np.array([vecangle(m,n) for m,n in zip(vecsBA_projected_BC,vecsCD_projected_CB)])
+					new_dihedral['angle'] = dihedrals_measured.mean()
+					dihedrals.append(new_dihedral)
+				else: raise Exception('development note. cannot generate abond with %d beads'%nbeads)
 
 		#---populate the topology
 		#---! note that you have to pass in moleculetype or the ITP is incomplete
 		new_top.molecules['DEX'] = dict(moleculetype=dict(molname='DEX',nrexcl=3),
-			atoms=atoms,bonds=bonds,angles=angles)
+			atoms=atoms,bonds=bonds,angles=angles,dihedrals=dihedrals)
 		new_top.write(state.here+'dextran.itp')
 
 		"""
