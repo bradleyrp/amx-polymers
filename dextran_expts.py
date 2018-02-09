@@ -121,7 +121,7 @@ place specs:|{
 		{'from':'CC321','from_charge':0.050,'to_charge':0.00,
 		'to':'CC321','atom':'C6','which':'previous'}]}
 polymer name: AGLC
-equilibration: ['short1','short2','short3']
+equilibration: ['short1']
 force field: martini-sources
 aglc source: None
 water buffer: 8
