@@ -20,8 +20,6 @@ model:
       bonds:
         - ['SB1','SB2']
         - ['SB2','SB3']
-      angles:
-        - ['SB1','SB2','SB3']
     middle:
       resname: DMR
       atoms:
@@ -40,8 +38,6 @@ model:
       bonds:
         - ['MB1','MB2']
         - ['MB2','MB3']
-      angles:
-        - ['MB1','MB2','MB3']
     terminus_end:
       resname: DET
       atoms:
@@ -60,27 +56,16 @@ model:
       bonds:
         - ['EB1','EB2']
         - ['EB2','EB3']
-      angles:
-        - ['EB1','EB2','EB3']
   between_parts:
     #! no repetition in the nesting
     terminus_start:
       middle:
         bonds:
           - ['SB3','MB1']
-        angles:
-          - ['SB3','MB1','MB2']
-          - ['SB2','SB3','MB1']
     middle:
       middle:
         bonds:
           - ['MB3','MB1']
-        angles:
-          - ['MB3','MB1','MB2']
-          - ['MB2','MB3','MB1']
       terminus_end:
         bonds:
           - ['MB3','EB1']
-        angles:
-          - ['MB3','EB1','EB2']
-          - ['MB2','MB3','EB1']

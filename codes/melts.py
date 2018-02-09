@@ -7,7 +7,7 @@ import MDAnalysis
 
 _not_reported = ['vecnorm','dotplace','rotation_matrix','check_cols','review3d','apply_rotation','align']
 #---! somehow status was getting reported when I merged in melts_tuner.py
-_not_reported += ['status','vecangle']
+_not_reported += ['status','vecangle','measure_torsions']
 
 ###---TOOLS
 
@@ -965,271 +965,10 @@ def make_cg_gel(name='melt',**kwargs):
 	state.itp = ['dextran.itp']
 	component(polymer_molame,count=1)
 
-def forward_mapper_v0():
-	"""
-	Read a reference simulation of the atomistic polymer to get statistics.
-	Used to perform a "forward mapping" from atomistic to coarse-grained.
-	"""
-	#---get the reference structure, presumably from another run
-	#---! we could eventually close the loop and make this self-contained
-	ref_specs = settings.atomistic_reference
-	ref_gro = os.path.join(ref_specs['path'],ref_specs['gro'])
-	ref_xtc = os.path.join(ref_specs['path'],ref_specs['xtc'])
-	uni = MDAnalysis.Universe(ref_gro,ref_xtc)
-	sel = uni.select_atoms('resname AGLC')
-
-	#---note that the string additions were added after Samaneh and Ryan sketched the key atom mapping
-	#---...and the break below helped to show which atoms are 
-	mapping = {
-		'terminus_start':{
-			'SB1':'C6 C5'+' H5 H61 H62 O6',
-			'SB2':'O5 C4 C1 O1'+' H1 HO1 H4 O4 HO4',
-			'SB3':'C3 C2'+' H2 O2 HO2 H3 O3 HO3'},
-		'middle':{
-			'MB1':'C6 C5'+' H5 H61 H62',
-			'MB2':'O5 C4 C1 O6'+' H1 H4 O4 HO4',
-			'MB3':'C3 C2'+' H2 O2 HO2 H3 O3 HO3'},
-		'terminus_end':{
-			'EB1':'C6 C5'+' H61 H62 HO6',
-			'EB2':'O5 C4 C1 O6'+' H1 H5 H4 O4 HO4',
-			'EB3':'C3 C2'+' H2 O2 HO2 H3 O3 HO3'}}
-
-	#---! assume only a single AGLC molecule
-	resnums = np.sort(np.unique(sel.atoms.resnums))
-	term_start,term_end = resnums[0],resnums[-1]
-	connector = lambda resnum: {0:'ERROR!',1:'terminus_start',
-		len(resnums):'terminus_end'}.get(resnum,'middle') 
-
-	#---iterate over residues to make sure we have mapped everything
-	for resnum in np.unique(sel.atoms.resnums):
-		#---figure out which connectivity we have 
-		connectivity = connector(resnum)
-		#---mapping happens by assigning indices to all of the atoms
-		this_names = list(np.array(sel.residues[list(sel.residues.resnums).index(resnum)].atoms.names))
-		this_map = dict([(k,np.array(v.split())) for k,v in mapping[connectivity].items()])
-		for cg_bead_name,atoms in this_map.items():
-			for atom in atoms: 
-				if atom in this_names: this_names.remove(atom)
-				else: print('%s not in %s'%(atom,this_names))
-		#---report leftover names so you can add them to the mapping above
-		if this_names: 
-			print('breaking on %s'%connectivity)
-			print(this_names)
-			break
-
-	#---map the resnum and atom name to the atom index
-	map_resnum_name_index = dict([(i,ii) for ii,i in enumerate(zip(*[sel.atoms.resnums,sel.atoms.names]))])
-	#---map residue number to connectivity
-	map_resnum_connectivity = [connector(resnum) for resnum in sel.atoms.resnums]
-
-	#---construct a list of resnums, bead_names, and corresponding atom indices
-	cg_model = []
-	for resnum in resnums:
-		connectivity = connector(resnum)
-		for bead_name in sorted(mapping[connectivity].keys()):
-			atoms = mapping[connectivity][bead_name]
-			atoms_in_bead = np.sort([map_resnum_name_index[(resnum,atom)] for atom in atoms.split()])
-			cg_model.append([resnum,bead_name,atoms_in_bead])
-
-	lenscale = 10.0
-	mass_table = {'H':1.008,'C':12.011,'O':15.999,'N':14.007,'P':30.974}
-
-	nframes = len(uni.trajectory)
-	frame_skip = 100
-	coords_red = np.zeros((len(range(0,nframes,frame_skip)),len(cg_model),3))
-	#---MAIN LOOP FOR BACKMAPPING
-	for ff,fr in enumerate(range(0,nframes,frame_skip)):
-		uni.trajectory[fr]
-		for anum,(rnum,bead,atom_inds) in enumerate(cg_model):
-			status('computing reduced coordinates',i=fr,looplen=nframes,tag='compute')
-			pos = sel.positions[atom_inds]/lenscale
-			#---! turning off COM and using COG for now
-			#weights = np.array([mass_table[i[0]] for i in sel.names[atom_inds]])
-			#com = (pos*np.tile(weights,(3,1)).T/np.sum(weights)).mean(axis=0)
-			#com = pos.mean(axis=0)
-			#---compute the center of mass
-			coords_red[ff][anum] = pos.mean(axis=0)
-
-	#---save the standard coordinates
-	coords = np.zeros((len(range(0,nframes,frame_skip)),len(sel),3))
-	for ff,fr in enumerate(range(0,nframes,frame_skip)):
-		uni.trajectory[fr]
-		coords[ff] = sel.positions/lenscale
-
-	residue_indices = list(zip(*cg_model)[0])
-	atom_names = list(zip(*cg_model)[1])
-	residue_names = np.array(['AGC' for i in residue_indices])
-	for fr in range(len(coords_red)):
-		polymer = GMXStructure(pts=coords_red[fr],residue_indices=residue_indices,
-			residue_names=residue_names,atom_names=atom_names,box=[10.,10.,10.])
-		polymer.write(state.here+'cg_model%04d.gro'%fr)
-
-	bash('cat cg_model0* > cg_model.gro',cwd=state.here)
-
-	def planeproject(x,n): return x-np.dot(x,n)/np.linalg.norm(n)*vecnorm(n)
-	def vecangle(v1,v2):
-		"""
-		Compute the anglebetween two vectors
-		"""
-		v1n,v2n = vecnorm(v1),vecnorm(v2)
-		dotp = np.dot(v1n,v2n)
-		angle = np.arccos(dotp)*(180./np.pi)	
-		if np.isnan(angle): return (0.0 if (v1n==v2n).all() else np.pi*(180/np.pi))
-		return angle
-
-	#---measure the torsions on the backbone beads
-	torsion_inds = np.array([[1,4,7,10],[4,7,10,13]])
-	#---allocate angles
-	torsion_angles = np.zeros((len(torsion_inds),len(coords_red)))
-	for fr in range(len(coords_red)):
-		status('computing torsions',i=fr,looplen=len(coords_red),tag='compute')
-		for tt,torsion_ind in enumerate(torsion_inds):
-			pts = coords_red[fr,torsion_ind]
-			#---imagine the torsion is given by pts a,b,c,d
-			#---project ba onto plane given by bc
-			project_ba_bc = planeproject(pts[0]-pts[1],pts[2]-pts[1])
-			project_cd_bc = planeproject(pts[3]-pts[2],pts[2]-pts[1])
-			angle = vecangle(project_ba_bc,project_cd_bc)
-			torsion_angles[tt,fr] = angle
-
-	#---get the backbone distances
-	backbone_positions = np.arange(1,15,3)
-	backbone_inds = np.transpose((backbone_positions[:-1],backbone_positions[1:]))
-	backbone_distances = np.zeros((len(backbone_inds),len(coords_red)))
-	for fr in range(len(coords_red)):
-		status('computing backbone distances',i=fr,looplen=len(coords_red),tag='compute')
-		for ii,inds in enumerate(backbone_inds):
-			pts = coords_red[fr,inds]
-			dist = np.linalg.norm(pts[1]-pts[0])
-			backbone_distances[ii,fr] = dist
-
-	print('[RESULT] backbone torsion is %.1f'%torsion_angles.mean())
-	print('[RESULT] backbone bond distance is %.3f'%backbone_distances.mean())
-
-	"""
-	prototyping a backmapper code
-	we want to get the average cage of atomistic atoms around the coarse-grained beads
-	this must happen at each frame because the centroids are computed at each frame
-	developing the forward mapping starts here ca 2017.6.23
-	removed center-of-mass and used COG to match the coords and coords_red exactly:
-		ipdb> coords_red[fr][0]
-		array([ 1.23733342,  0.31583333,  0.93133336])
-		ipdb> coords[fr][cg_model[0][2]].mean(axis=0)
-		array([ 1.23733338,  0.31583335,  0.93133339])
-	rather than writing the code to load the new cgmd simulation
-		we are first going to try backmapping onto another frame of the forward-mapped aamd pentamer
-
-	"""
-
-	fr = 10
-	fr_alt = 80
-
-	#---get a coarse model from an alternate frame
-	fine = coords[fr]
-	coarse = coords_red[fr]
-	#---we wish to backmap onto the target CGMD structure
-	target = coords_red[fr_alt]
-	#---loop over residues
-	new_pts = []
-	resnums = np.array(zip(*cg_model)[0])
-	for resnum in list(set(resnums)):
-		triplet_ind_coarse = np.where(resnums==resnum)[0]
-		triplet_ind_fine = [cg_model[i][2] for i in triplet_ind_coarse]
-		coarse_sub = coarse[triplet_ind_coarse]
-		fine_sub = fine[np.concatenate(triplet_ind_fine)]
-		#---we wish to backmap onto the target CGMD structure
-		target = coords_red[fr_alt][triplet_ind_coarse]
-		#---perform the alignment between two cgmd frames
-		alignment = align(target,coarse_sub)
-		#---move fine to the origin
-		fine_sub -= fine_sub.mean(axis=0)
-		#---rotate fine
-		fine_rotated = apply_rotation(fine_sub,alignment['rm'])
-		#---move fine to the target
-		fine_backmapped = fine_rotated + alignment['origin']
-		new_pts.append(fine_backmapped)
-	new_pts = np.concatenate(new_pts)
-
-	#---hack in the new points
-	ref_spec = settings.atomistic_reference
-	fn_v11_gro = os.path.join(ref_spec['path'],ref_spec['gro'])
-	v11struct = GMXStructure(fn_v11_gro)
-	v11struct.points[:len(new_pts)] = new_pts
-	v11struct.write('hack_structure3.gro')
-	v11struct.points[:len(new_pts)] = coords[fr_alt]
-	v11struct.write('hack_structure4.gro')
-
-	#---save for next step
-	np.savetxt(state.here+'fine.dat',fine)
-	with open(state.here+'cg_model.dat','w') as fp: fp.write(str(cg_model))
-
-	#---save for next step
-	np.savetxt(state.here+'fine.dat',fine)
-	np.savetxt(state.here+'coarse.dat',coarse)
-	with open(state.here+'cg_model.dat','w') as fp: 
-		cg_model_python = [[int(i),str(j),list(k)] for i,j,k in cg_model]
-		fp.write(str(cg_model_python))
-
-def backward_mapper_v0():
-	"""..."""
-	#---! backmapping needs evidence of the forward mapping for now
-	prev_dn = state.before[-1]['here']
-	with open(os.path.join(prev_dn,'cg_model.dat')) as fp: cg_model = eval(fp.read())
-	fine = np.loadtxt(os.path.join(prev_dn,'fine.dat'))
-	coarse = np.loadtxt(os.path.join(prev_dn,'coarse.dat'))
-	#---get a single frame from another cgmd run
-	ref_spec = settings.coarse_reference
-	fn_v27_gro = os.path.join(ref_spec['path'],ref_spec['gro'])
-	source = fn_v27_gro
-
-	struct = GMXStructure(source)
-	#---backmap the novel frame
-	#---! the following block is copied in from pentamer
-	target = struct.points[struct.select('resname AGLC')]
-
-	#---loop over residues
-	new_pts = []
-	resnums = np.array(zip(*cg_model)[0])
-
-	#---formulate a canonical model fine-grained residue from the "fine" points
-	canon_fine = np.array([cg_model[i][2] for i in [4,5,6]])
-	canon_coarse = np.where(resnums==2)[0]
-
-	#---modification from the pentamer routine to look over target resnums
-	resnums = struct.residue_indices[struct.select('resname AGLC')]
-	for resnum in list(set(resnums)):
-		triplet_ind_coarse = np.where(resnums==resnum)[0]
-		#---! previous 1-1: triplet_ind_fine = [cg_model[i][2] for i in triplet_ind_coarse]
-		#---select a "model" fine residue to map onto the coarse one
-		triplet_ind_fine = canon_fine
-		#---! the other half of the mapping ...
-		coarse_sub = coarse[canon_coarse]
-		fine_sub = fine[np.concatenate(triplet_ind_fine)]
-		#---we wish to backmap onto the target CGMD structure
-		target_sub = target[triplet_ind_coarse]
-		#---perform the alignment between two cgmd frames
-		alignment = align(target_sub,coarse_sub)
-		#---move fine to the origin
-		fine_sub -= fine_sub.mean(axis=0)
-		#---rotate fine
-		fine_rotated = apply_rotation(fine_sub,alignment['rm'])
-		#---move fine to the target
-		fine_backmapped = fine_rotated + alignment['origin']
-		new_pts.append(fine_backmapped)
-	new_pts = np.concatenate(new_pts)
-
-	#---hack in the new points
-	ref_spec = settings.atomistic_reference
-	fn_v11_gro = os.path.join(ref_spec['path'],ref_spec['gro'])
-	v11struct = GMXStructure(fn_v11_gro)
-	v11struct.points[:len(new_pts)] = new_pts
-	v11struct.write('backmapped_8mer_possibly.gro')
-	import ipdb;ipdb.set_trace()
-
-
-###---REWORKING in Nov 2017 (note that we are retaining the old code above for reference)
+###---ADVANCED METHOD (started Nov 2017)
 
 def planeproject(x,n): return x-np.dot(x,n)/np.linalg.norm(n)*vecnorm(n)
+
 def vecangle(v1,v2):
 	"""
 	Compute the anglebetween two vectors
@@ -1239,6 +978,35 @@ def vecangle(v1,v2):
 	angle = np.arccos(dotp)*(180./np.pi)	
 	if np.isnan(angle): return (0.0 if (v1n==v2n).all() else np.pi*(180/np.pi))
 	return angle
+
+def measure_torsions(coords,subsel):
+	"""
+	???
+	"""
+	dihedrals_measured = []
+	# loop over instances of a particular bond
+	for inds in subsel:
+		# functions for computing torsions
+		bulk_norm = lambda x: (x/np.tile(np.linalg.norm(x,axis=1),(3,1)).T)
+		# project the AB vector onto the BC plane
+		vecsBC = coords[:,inds[3]]-coords[:,inds[2]]
+		vecsBCn = bulk_norm(vecsBC)
+		vecsBAn = bulk_norm(coords[:,inds[2]]-coords[:,inds[1]])
+		#! bulk plane project via:
+		#! ... def planeproject(x,n): return x-np.dot(x,n)/np.linalg.norm(n)*vecnorm(n)
+		vecsBA_projected_BC = (
+			vecsBAn-np.tile(np.array([np.dot(m,n) 
+				for m,n in zip(vecsBAn,vecsBCn)]),(3,1)).T*vecsBCn)
+		# project the AB vector onto the BC plane
+		vecsCB = coords[:,inds[1]]-coords[:,inds[2]]
+		vecsCBn = bulk_norm(vecsCB)
+		vecsCDn = bulk_norm(coords[:,inds[3]]-coords[:,inds[2]])
+		vecsCD_projected_CB = (
+			vecsCDn-np.tile(np.array([np.dot(m,n) 
+				for m,n in zip(vecsCDn,vecsCBn)]),(3,1)).T*vecsCBn)
+		# take the angle difference between the two projected vectors
+		dihedrals_measured.append(np.array([vecangle(m,n) for m,n in zip(vecsBA_projected_BC,vecsCD_projected_CB)]))
+	return np.array(dihedrals_measured)
 
 class MultiScaleModel:
 	"""
@@ -1261,15 +1029,21 @@ class MultiScaleModel:
 		"""Add a representation to the model."""
 		if name in self.reps: raise Exception('representation %s already exists'%name)
 		self.reps[name] = kwargs
-	def build_fine_to_coarse(self,rep,target_name):
+	def build_fine_to_coarse(self,rep,target_name,**mods):
 		"""
 		Given a fine-grained representation and a mapping, prepare the coarse model and the indexer.
 		"""
 		source = self.reps[rep]
 		if target_name in self.reps: raise Exception('')
-		molecule_map = source['molecule_map']
+		# molecule map can be overridden
+		#! note that once we do two calls to build_fine_to_coarse for "bigger" we can make the 
+		#! ... if statement below strict again and remove the base
+		molecule_map = mods.get('molecule_map',source['molecule_map'])
+		connector = lambda resnum,total: {0:None,1:'terminus_start',
+			total:'terminus_end'}.get(resnum,'middle')
 		#---the assignment of "parts" descriptors depends on the mapping type
-		if molecule_map == 'one molecule many residues injective':
+		if molecule_map in ['one molecule many residues injective',
+			'one molecule many residues bigger']:
 			"""
 			In this section we perform the residue-injective mapping.
 			We build a list of beads with names and residues taken from the unique atomistic residues.
@@ -1278,8 +1052,6 @@ class MultiScaleModel:
 			#---get unique resnums because this mapping is injective between residues
 			source['resnums_u'] = np.unique(source['resnums'])
 			#---use the molecule map style to assign parts to each atom
-			connector = lambda resnum,total: {0:None,1:'terminus_start',
-				total:'terminus_end'}.get(resnum,'middle')
 			source['parts'] = [connector(r,len(source['resnums_u'])) for r in source['resnums']]
 			#---build the coarse model
 			target = dict(resnums_u=source['resnums_u'],beads=[])
@@ -1309,8 +1081,36 @@ class MultiScaleModel:
 			#---make the final mapping
 			target['coarsen'] = [i['indices'] for i in target['beads']]
 			target['length'] = len(target['coarsen'])
-		else: raise Exception('invalid molecule map %s'%molecule_map)
+		# very similar to the above block with no mapping because there is none from a pentamer
+		# ... to a much larger structure. bond distributions are generalized later.
+		# we actually overwrite this after getting the coarsening above
+		if molecule_map == 'one molecule many residues bigger':
+			nres = mods['nres']
+			# write the original resnames
+			target['resnums_u_base'] = target['resnums_u']
+			target['resnums_u'] = np.arange(nres)+1
+			target['beads_base'] = target['beads']
+			target['beads'] = []
+			# loop over resnums/coarse-grained residues
+			for resnum in target['resnums_u']:
+				# each bead gets a residue index
+				bead = dict(resnum=resnum,part=connector(resnum,nres))
+				# get the beads for the part
+				self.parts[bead['part']]
+				# loop over index pairs
+				for names_coarse,names_fine in self.parts[bead['part']]:
+					# currently this allows only coarse-to-fine
+					if len(names_coarse)!=1: raise Exception('development')
+					specify = dict(name=names_coarse[0])
+					specify['indices'] = np.where(np.all((np.in1d(source['names'],names_fine),
+						source['resnums']==resnum),axis=0))[0]
+					target['beads'].append(dict(bead,**specify))
+		target['molecule_map'] = molecule_map
 		self.reps[target_name] = target
+	def imagine(self):
+		"""
+		"""
+		import ipdb;ipdb.set_trace()
 	def reduce(self,source,target,positions):
 		"""Convert a set of atomistic positions to coarse ones."""
 		pos = [np.average(positions[i],axis=0,weights=self.reps[source]['masses'][i]) 
@@ -1323,6 +1123,18 @@ class MultiScaleModel:
 		We will measure features of the model from the coords and use it to construct the topology.
 		"""
 		rep = self.reps[source]
+		molecule_map = rep['molecule_map']
+		remember_bonds = False
+		# note that we automatically choose general bonds instead of explicit ones
+		if molecule_map=='one molecule many residues injective':
+			general_bonds = False
+			remember_bonds = True
+		elif molecule_map=='one molecule many residues bigger':
+			general_bonds = True
+			#! hard-coded reference for now
+			rep_ref = self.reps['coarse']
+		# do not alter general_bonds above, since this logic must be strict!
+		else: raise Exception
 		#---collect the intra-residue bonds
 		bonds_intra,bond_parts = [],[]
 		#---! this is currently hard-coded. check the style later
@@ -1338,15 +1150,15 @@ class MultiScaleModel:
 		requirements = {
 			'atoms':['charge','mass','type'],}
 		#---quicker lookups between residues
-		def get_bead_in_residue(bead_name,resnum):
-			matches = [ii for ii,i in enumerate(rep['beads']) 
+		def get_bead_in_residue(bead_name,resnum,beads_name='beads'):
+			matches = [ii for ii,i in enumerate(rep[beads_name]) 
 				if i['name']==bead_name and i['resnum']==resnum]
 			if len(matches)>1: raise Exception
 			elif len(matches)==0: return None
 			else: return matches[0]
 		#---construct the atoms list which is required for indexing the bonds later on
 		atom_id,atoms = 1,[]
-		bonds,angles,dihedrals = [],[],[]
+		bonds,angles,dihedrals,bonds_abstract = [],[],[],[]
 		#---loop over residues
 		for resnum in rep['resnums_u']:
 			#---get the beads in this residue
@@ -1368,39 +1180,47 @@ class MultiScaleModel:
 					new_atom[key] = model_spec['model']['by_part'][resname][
 						'atoms'][atom_residue_index][bead['name']][key]
 				atoms.append(new_atom)
-			#---loop over bonds
+			#! moving the following below to the automatic part
+			if False:
+				#---loop over bonds
+				for bead_1,bead_2 in model_spec['model']['by_part'][resname].get('bonds',[]):
+					lmatch = get_bead_in_residue(bead_name=bead_1,resnum=resnum)
+					rmatch = get_bead_in_residue(bead_name=bead_2,resnum=resnum)
+					bead_1_i,bead_2_i = lmatch,rmatch
+					#---generate a new bond
+					#---! inferring the indices here, starting at one instead of zero (use atom_id instead?)
+					new_bond = dict(i=bead_1_i+1,j=bead_2_i+1)
+					new_bond['funct'] = 1
+					new_bond['force'] = 10000
+					if not general_bonds:
+						#---get the positions for this bond pair
+						positions = coords[:,np.array([bead_1_i,bead_2_i])]
+						#---compute observed distances
+						distances = np.linalg.norm(positions.ptp(axis=1),axis=1)
+						new_bond['length'] = distances.mean()
+					else:
+						# previously we got the exact index on coords (reduced i.e. coarse-grained positions) 
+						# ... from the atomistic simulation. now we read the coords by name to generalize it
+						# get all rows in coods that match the name of bead_1 and bead_2
+						lmatch,rmatch = [np.array([i for i in [get_bead_in_residue(
+							bead_name=bead,resnum=r,beads_name='beads_base') 
+							for r in rep.get('resnums_u_base',rep['resnums_u'])] if i!=None]) 
+							for bead in [bead_1,bead_2]]
+						try: distances = (coords[:,lmatch]-coords[:,rmatch])
+						except:
+							import ipdb;ipdb.set_trace()
+						#! note that distances is nframes by the number of redudant beads of that type by XYZ
+						distances_mean = np.array([np.linalg.norm(bd.T,axis=1).mean() 
+							for bd in distances.T]).mean()
+						new_bond['length'] = distances_mean
+					bonds.append(new_bond)
+			# get connectivity here
 			for bead_1,bead_2 in model_spec['model']['by_part'][resname].get('bonds',[]):
 				lmatch = get_bead_in_residue(bead_name=bead_1,resnum=resnum)
 				rmatch = get_bead_in_residue(bead_name=bead_2,resnum=resnum)
 				bead_1_i,bead_2_i = lmatch,rmatch
-				#---get the positions for this bond pair
-				positions = coords[:,np.array([bead_1_i,bead_2_i])]
-				#---compute observed distances
-				distances = np.linalg.norm(positions.ptp(axis=1),axis=1)
-				#---generate a new bond
-				#---! inferring the indices here, starting at one instead of zero (use atom_id instead?)
-				new_bond = dict(i=bead_1_i+1,j=bead_2_i+1)
-				new_bond['funct'] = 1
-				new_bond['force'] = 10000
-				new_bond['length'] = distances.mean()
-				bonds.append(new_bond)
-			#---angles within residues
-			#! trying to generalize
-			if False:
-				for bead_names in model_spec['model']['by_part'][resname].get('angles',[]):
-					inds = np.array([get_bead_in_residue(resnum=resnum,bead_name=bead) for bead in bead_names])
-					if any([i==None for i in inds]): 
-						raise Exception('cannot find bead names %s in residue %s'%(bead_names,resnum))
-					#! residue numbering below
-					new_angle = dict(i=inds[0]+1,j=inds[1]+1,k=inds[2]+1)
-					new_angle['funct'] = 2
-					new_angle['force'] = 2000.
-					vecs1,vecs2 = np.array((
-						coords[:,inds[0]]-coords[:,inds[1]],
-						coords[:,inds[2]]-coords[:,inds[0]]))
-					angles_measured = np.array([vecangle(i,j) for i,j in zip(vecs1,vecs2)])
-					new_angle['angle'] = angles_measured.mean()
-					angles.append(new_angle)
+				new_bond = dict(i=bead_1_i+1,j=bead_2_i+1)			
+				bonds_abstract.append(new_bond)
 		#---handle bonds between residues
 		resnums_adjacent = [(rep['resnums_u'][i],rep['resnums_u'][i+1]) 
 			for i in range(len(rep['resnums_u'])-1)]
@@ -1414,49 +1234,25 @@ class MultiScaleModel:
 						lmatch = get_bead_in_residue(bead_name=bead_1,resnum=r1)
 						rmatch = get_bead_in_residue(bead_name=bead_2,resnum=r2)
 						if lmatch and rmatch: 
-							#! this section is repetitive with the bond creation routine above
+							# previously we were calculating bonds here but this is moved below
+							if False:
+								#! this section is repetitive with the bond creation routine above
+								bead_1_i,bead_2_i = lmatch,rmatch
+								#---get the positions for this bond pair
+								positions = coords[:,np.array([bead_1_i,bead_2_i])]
+								#---compute observed distances
+								distances = np.linalg.norm(positions.ptp(axis=1),axis=1)
+								#---generate a new bond
+								#---! inferring the indices here (use atom_id instead?)
+								new_bond = dict(i=bead_1_i+1,j=bead_2_i+1)
+								new_bond['funct'] = 1
+								new_bond['force'] = 1250
+								new_bond['length'] = distances.mean()
+								bonds.append(new_bond)
 							bead_1_i,bead_2_i = lmatch,rmatch
-							#---get the positions for this bond pair
-							positions = coords[:,np.array([bead_1_i,bead_2_i])]
-							#---compute observed distances
-							distances = np.linalg.norm(positions.ptp(axis=1),axis=1)
-							#---generate a new bond
-							#---! inferring the indices here (use atom_id instead?)
 							new_bond = dict(i=bead_1_i+1,j=bead_2_i+1)
-							new_bond['funct'] = 1
-							new_bond['force'] = 1250
-							new_bond['length'] = distances.mean()
-							bonds.append(new_bond)
-				#---search for all angles between adjacent residues
-				if False:
-					for bead_1,bead_2,bead_3 in rspec.get('angles',[]):
-						#---check all adjacent residues
-						for r1,r2 in resnums_adjacent:
-							#! first possible combination
-							match1a = get_bead_in_residue(bead_name=bead_1,resnum=r1)
-							match2a = get_bead_in_residue(bead_name=bead_2,resnum=r2)
-							match3a = get_bead_in_residue(bead_name=bead_3,resnum=r2)
-							#! second possible combination
-							match1b = get_bead_in_residue(bead_name=bead_1,resnum=r1)
-							match2b = get_bead_in_residue(bead_name=bead_2,resnum=r1)
-							match3b = get_bead_in_residue(bead_name=bead_3,resnum=r2)
-							if (match1a and match2a and match3a):
-								inds = match1a,match2a,match3a
-							elif (match1b and match2b and match3b):
-								inds = match1b,match2b,match3b
-							else: continue
-							#---if we have valid match then construct a bond
-							#! residue numbering below
-							#! note that this was nearly identical to angle constuction above
-							new_angle = dict(i=inds[0]+1,j=inds[1]+1,k=inds[2]+1)
-							new_angle['funct'] = 2
-							new_angle['force'] = 2000.
-							vecs1,vecs2 = np.array((
-								coords[:,inds[0]]-coords[:,inds[1]],
-								coords[:,inds[2]]-coords[:,inds[0]]))
-							angles_measured = np.array([vecangle(i,j) for i,j in zip(vecs1,vecs2)])
-							new_angle['angle'] = angles_measured.mean()
-							angles.append(new_angle)
+							bonds_abstract.append(new_bond)
+
 		# automatically detect all possible angles 
 		class Molecule:
 			def __init__(self):
@@ -1478,8 +1274,9 @@ class MultiScaleModel:
 				self.neighbors = []
 			def __repr__(self):
 				return '%s: %s'%(self.num,[i.num for i in self.neighbors])
+
 		molecule = Molecule()
-		bond_list = [tuple([bond[k] for k in 'ij']) for bond in bonds]
+		bond_list = [tuple([bond[k] for k in 'ij']) for bond in bonds_abstract]
 		for atom_id in list(set([i for j in bond_list for i in j])):
 			molecule.atoms.append(Atom(atom_id))
 		for bond in bond_list: molecule.add_link(bond)
@@ -1491,18 +1288,41 @@ class MultiScaleModel:
 					local_path = path[:]+[neighbor]
 					for p in get_paths(atoms,path=local_path,d=d-1): yield p
 			else: yield path
-
-		# functions for computing torsions
-		bulk_norm = lambda x: (x/np.tile(np.linalg.norm(x,axis=1),(3,1)).T)
-
 		# loop over angles and dihedrals
-		for nbeads in [3,4]:
+		for nbeads in [2,3,4]:
 			bead_candidates = list(set([tuple(sorted([i.num for i in a])) 
 				for a in get_paths(molecule.atoms,d=nbeads)]))
 			valid_bonds = [i for i in bead_candidates if len(set(list(i)))==nbeads]
 			# loop over these bonds
 			for beads in sorted(valid_bonds):
-				if nbeads==3:
+				if nbeads==2:
+					i,j = beads
+					inds = [m-1 for m in beads]
+					new_bond = dict(i=i,j=j)
+					if not general_bonds:
+						#---get the positions for this bond pair
+						positions = coords[:,np.array(inds)]
+						#---compute observed distances
+						distances = np.linalg.norm(positions.ptp(axis=1),axis=1)
+						new_bond['length'] = distances.mean()
+					else:
+						# previously we got the exact index on coords (reduced i.e. coarse-grained positions) 
+						# ... from the atomistic simulation. now we read the coords by name to generalize it
+						# get all rows in coods that match the name of bead_1 and bead_2
+						bead_1,bead_2 = [rep['beads'][b]['name'] for b in inds]
+						lmatch,rmatch = [np.array([i for i in [get_bead_in_residue(
+							bead_name=bead,resnum=r,beads_name='beads_base') 
+							for r in rep.get('resnums_u_base',rep['resnums_u'])] if i!=None]) 
+							for bead in [bead_1,bead_2]]
+						distances = (coords[:,lmatch]-coords[:,rmatch])
+						#! note that distances is nframes by the number of redudant beads of that type by XYZ
+						distances_mean = np.array([np.linalg.norm(bd.T,axis=1).mean() 
+							for bd in distances.T]).mean()
+						new_bond['length'] = distances_mean
+					new_bond['funct'] = 1
+					new_bond['force'] = 1000
+					bonds.append(new_bond)
+				elif nbeads==3:
 					#! beware python 2 will reset i in a comprehension hence this is a poor index choice
 					i,j,k = beads
 					#! back to zero indexes
@@ -1510,96 +1330,104 @@ class MultiScaleModel:
 					new_angle = dict(i=i,j=j,k=k)
 					new_angle['funct'] = 2
 					new_angle['force'] = 500. # 2000 is too high for all of the bonds. need to select them
-					vecs1,vecs2 = np.array((
-						coords[:,inds[0]]-coords[:,inds[1]],
-						coords[:,inds[2]]-coords[:,inds[0]]))
-					angles_measured = np.array([vecangle(i,j) for i,j in zip(vecs1,vecs2)])
-					new_angle['angle'] = angles_measured.mean()
+					# measure the angles 1-1 from the underlying coordinates
+					if not general_bonds:
+						vecs1,vecs2 = np.array((
+							coords[:,inds[0]]-coords[:,inds[1]],
+							coords[:,inds[2]]-coords[:,inds[0]]))
+						angles_measured = np.array([vecangle(i,j) for i,j in zip(vecs1,vecs2)])
+						new_angle['angle'] = angles_measured.mean()
+					# the coarse model may have more coordinates than the (reduced) source
+					else: 
+						# to get the generic angles we need to check the inds list against the valid bond list
+						# ... because just checking by name means we end up looking for all of the SB2, then
+						# ... all of the SB3, then all of the MB1 and we get 1,1,3 candidates. instead of this
+						# ... method we need to generalize the entire angle at once.
+						bead_names = [rep['beads'][b]['name'] for b in inds]
+						#! vital note: we prepared to use resnums to ensure that the bead names were also 
+						#! ... split across residue numbers correctly. however, this was not needed since the #! ... following  section only selects triplets from the reference structure and 
+						#! ... these are always split across residues correctly. basically the for/if loop 
+						#! ... below that picks the right angles always ensures we get valid angles as long 
+						#! ... as both models have them. this might not always be the case in branched 
+						#! ... topologies
+						resnums = [rep['beads'][b]['resnum'] for b in inds]
+						# by the time you arrive here we have a molecule map "bigger" which requires
+						# ... general bonds and we need to match the coarse_big rep against the coarse rep
+						valid_angles_ref = [tuple([a[k] for k in 'ijk']) 
+							for a in rep_ref['bond_info']['angles']]
+						# search valid angles from the reference for those that match our general request
+						angle_matches = []
+						for angle in valid_angles_ref:
+							beads_ref = [rep_ref['beads'][i-1] for i in angle]
+							if ([b['name'] for b in beads_ref]==bead_names or 
+								[b['name'] for b in beads_ref][::-1]==bead_names):
+								angle_matches.append([i-1 for i in angle])
+						matches = [np.array([i for i in [get_bead_in_residue(
+							bead_name=bead,resnum=r,beads_name='beads_base') 
+							for r in rep.get('resnums_u_base',rep['resnums_u'])] if i!=None]) 
+							for bead in bead_names]
+						# observations are instance of angle type by frames by bead by XYZ
+						# ... note that for middle beads we have more than one instance of the angle type
+						obs = np.array([coords[:,i] for i in np.array(angle_matches)])
+						vecsAB = obs[:,:,2]-obs[:,:,1]
+						vecsCB = obs[:,:,0]-obs[:,:,1]
+						angles_measured = np.array([np.array([vecangle(i,j) 
+							for i,j in zip(vecsAB[ii],vecsCB[ii])]) for ii in range(len(vecsAB))])
+						# average over instances and frames
+						new_angle['angle'] = angles_measured.mean()
 					angles.append(new_angle)
 				elif nbeads==4:
-					# under development
-					#! beware python 2 will reset i in a comprehension hence this is a poor index choice
-					i,j,k,l = beads
-					#! back to zero indexes
-					inds = [m-1 for m in beads]
-					new_dihedral = dict(i=i,j=j,k=k,l=l)
-					new_dihedral['funct'] = 1
-					new_dihedral['multiplicity'] = 1 # MAY NOT REALLY BE ONE!
-					new_dihedral['force'] = 50.
-					# COMPUTE TORSIONS! CHECK THIS LATER!
-					# project the AB vector onto the BC plane
-					vecsBC = coords[:,inds[3]]-coords[:,inds[2]]
-					vecsBCn = bulk_norm(vecsBC)
-					vecsBAn = bulk_norm(coords[:,inds[2]]-coords[:,inds[1]])
-					#! bulk plane project via:
-					#! ... def planeproject(x,n): return x-np.dot(x,n)/np.linalg.norm(n)*vecnorm(n)
-					vecsBA_projected_BC = (
-						vecsBAn-np.tile(np.array([np.dot(m,n) 
-							for m,n in zip(vecsBAn,vecsBCn)]),(3,1)).T*vecsBCn)
-					# project the AB vector onto the BC plane
-					vecsCB = coords[:,inds[1]]-coords[:,inds[2]]
-					vecsCBn = bulk_norm(vecsCB)
-					vecsCDn = bulk_norm(coords[:,inds[3]]-coords[:,inds[2]])
-					vecsCD_projected_CB = (
-						vecsCDn-np.tile(np.array([np.dot(m,n) 
-							for m,n in zip(vecsCDn,vecsCBn)]),(3,1)).T*vecsCBn)
-					# take the angle difference between the two projected vectors
-					dihedrals_measured = np.array([vecangle(m,n) for m,n in zip(vecsBA_projected_BC,vecsCD_projected_CB)])
-					new_dihedral['angle'] = dihedrals_measured.mean()
-					dihedrals.append(new_dihedral)
+					if not general_bonds:
+						# under development
+						#! beware python 2 will reset i in a comprehension hence this is a poor index choice
+						i,j,k,l = beads
+						#! back to zero indexes
+						inds = [m-1 for m in beads]
+						new_dihedral = dict(i=i,j=j,k=k,l=l)
+						new_dihedral['funct'] = 1
+						new_dihedral['multiplicity'] = 1 # MAY NOT REALLY BE ONE!
+						new_dihedral['force'] = 50.
+						# COMPUTE TORSIONS! CHECK THIS LATER!
+						dihedrals_measured = measure_torsions(coords,[inds])
+						new_dihedral['angle'] = dihedrals_measured.mean()
+						dihedrals.append(new_dihedral)
+					else:
+						# mimic the angle section
+						inds = [m-1 for m in beads]
+						i,j,k,l = beads 
+						new_dihedral = dict(i=i,j=j,k=k,l=l)
+						bead_names = [rep['beads'][b]['name'] for b in inds]
+						valid_dihedrals_ref = [tuple([a[k] for k in 'ijkl']) 
+							for a in rep_ref['bond_info']['dihedrals']]
+						# search valid angles from the reference for those that match our general request
+						dihedral_matches = []
+						for dihedral in valid_dihedrals_ref:
+							beads_ref = [rep_ref['beads'][i-1] for i in dihedral]
+							if ([b['name'] for b in beads_ref]==bead_names or 
+								[b['name'] for b in beads_ref][::-1]==bead_names):
+								dihedral_matches.append([i-1 for i in dihedral])
+						dihedrals_measured = measure_torsions(coords,dihedral_matches)
+						new_dihedral['funct'] = 1
+						new_dihedral['multiplicity'] = 1 # MAY NOT REALLY BE ONE!
+						new_dihedral['force'] = 50.
+						new_dihedral['angle'] = dihedrals_measured.mean()
+						dihedrals.append(new_dihedral)
 				else: raise Exception('development note. cannot generate abond with %d beads'%nbeads)
 
-		#---populate the topology
-		#---! note that you have to pass in moleculetype or the ITP is incomplete
-		new_top.molecules['DEX'] = dict(moleculetype=dict(molname='DEX',nrexcl=3),
-			atoms=atoms,bonds=bonds,angles=angles,dihedrals=dihedrals)
-		new_top.write(state.here+'dextran.itp')
+		if remember_bonds:
+			self.reps[source]['bond_info'] = dict(bonds=bonds,angles=angles,dihedrals=dihedrals)
+		else:
+			#---populate the topology
+			#---! note that you have to pass in moleculetype or the ITP is incomplete
+			new_top.molecules['DEX'] = dict(moleculetype=dict(molname='DEX',nrexcl=3),
+				atoms=atoms,bonds=bonds,angles=angles,dihedrals=dihedrals)
+			new_top.write(state.here+'dextran.itp')
 
 		"""
 		note that in the above we calculate distances, angles, etc using the model positions
 		which assumes the CG model has the same number of residues as the atomistic model
 		we should obviously relax this requirement
 		"""
-
-		#---! development code 
-		if False:
-			#---loop over residues
-			for resnum in rep['resnums_u']:
-				#---get the beads in this residue
-				beads_inds,beads = zip(*[(ii,i) for ii,i in enumerate(rep['beads']) if i['resnum']==resnum])
-				#---! first bead is the resname
-				resname = beads[0]['part']
-				bondlist = model_by_part[resname]['bonds']
-				for b1,b2 in bondlist:
-					#---! unique
-					bead1 = [ii for ii,i in enumerate(beads) if i['name']==b1][0]
-					bead2 = [ii for ii,i in enumerate(beads) if i['name']==b2][0]
-					bonds_intra.append((beads_inds[bead1],beads_inds[bead2]))
-					bond_parts.append(resname)
-			distances = np.linalg.norm(coords[:,bonds_intra].ptp(axis=2),axis=2)
-		#---! development code
-		if False:
-			import matplotlib as mpl
-			import matplotlib.pyplot as plt
-			ax = plt.subplot(111)
-			bins_all = np.linspace(distances.min(),distances.max(),20)
-			for index,b in enumerate(distances.T):
-				counts,bins = np.histogram(b,bins=bins_all)
-				mids = (bins[1:]+bins[:-1])/2.
-				ax.plot(mids,counts,c='rgb'[partnames.index(bond_parts[index])])
-			plt.show()
-		#---! development code
-		if False:
-			names = [i['name'] for i in model.reps['coarse']['beads']] 
-			#---get the positions for this bond pair
-			positions = coords_red[:,np.array(bonds_intra)]
-			#---compute observed distances
-			distances = np.linalg.norm(positions.ptp(axis=1),axis=1)
-		#---! development code
-		if False:
-			look = GMXTopology('/home/rpb/omicron/dataset-project-polymers/melt-v007/'
-				'inputs/dev-melt-aglc-charmm/aglc-example.top')
-			mol = look.molecules['Other']
 
 def make_polymer(name='melt',**kwargs):
 	"""
@@ -1635,6 +1463,99 @@ def make_polymer(name='melt',**kwargs):
 	state.itp = ['dextran.itp']
 	component(polymer_molname,count=1)
 
+def make_crude_coarse_polymer(name='vacuum',diagonals=False,review=False):
+	"""
+	Settings in the experiment bring you here, or above to `make_polymer`.
+	The `make_polymer` code above will make a single large molecule. 
+	This method will make a melt from a square lattice. 
+	UNDER DEVELOPMENT.
+	"""
+	monomer_resname = 'AGLC'
+	polymer_molname = 'DEX'
+	### MAKE A SQUARE LATTICE (recapitulated from make_gel_on_lattice)
+	cwd = state.here
+	# make a universe
+	a0 = state.lattice_melt_settings['a0']
+	sizer = state.lattice_melt_settings['sizer']
+	n_p = state.lattice_melt_settings['n_p']
+	volume_limit = state.lattice_melt_settings['volume_limit']
+	#! assume square
+	xd,yd,zd = a0,a0,a0
+	xld,yld,zld = sizer,sizer,sizer
+	data_discrete = np.array([[i,j,k] 
+		for k in np.arange(0,zld,1) 
+		for j in np.arange(0,yld,1) 
+		for i in np.arange(0,xld,1)]).astype(int)
+	# generate neighbor rules (with periodic boundary conditions)
+	if not diagonals:
+		neighbor_list = [(0+i,0+j,0+k) 
+			for i in range(-1,2) for j in range(-1,2) 
+			for k in range(-1,2) if not all([x==0 for x in [i,j,k]]) 
+			and sum([x!=0 for x in [i,j,k]])==1]
+	else: raise Exception
+	neighbors = lambda x,y,z: [((x+i)%xld,(y+j)%yld,(z+k)%zld) for i,j,k in neighbor_list]
+	# CONSTRUCT A non-intersecting walk in 3-space
+	# track traffic (no intersections) and random walks through the space
+	walkers,walks = [],np.zeros((xld,yld,zld)).astype(int)
+	walk_id = 1
+	while float(np.sum(walks==0))/np.product(walks.shape)>volume_limit:
+		filled_up = np.product(walks.shape)-float(np.sum(walks==0))
+		status('[CONSTRUCT] making polymers',i=filled_up,looplen=np.product(walks.shape)*(1.0-volume_limit))
+		prop_filled = float(np.sum(walks>0))/np.product(walks.shape)
+		if prop_filled>=volume_limit: 
+			status('breaking construction loop because the space-filled is %.3f'%prop_filled)
+			break
+		# random starting point
+		pos = tuple(np.transpose(np.where(walks==0))[np.random.randint(np.sum(walks==0))])
+		# initiate
+		size = 0
+		walks[pos] = walk_id
+		# loop
+		this_walk = [pos]
+		failure = False
+		while size<n_p-1:
+			ways = list(filter(lambda n : walks[n]==0,neighbors(*pos)))
+			if not ways:
+				failure = True
+				break
+			pos = ways[np.random.randint(len(ways))]
+			this_walk.append(pos)
+			walks[pos] = walk_id
+			size += 1
+		if not failure:
+			walkers.append(this_walk)
+			walk_id += 1
+	# use a half-lattice offset to place the dots in the center of the box if we are doing a 3D review
+	offset = a0/2.0
+	# now that we have points, we recapitulate a sequence from make_cg_gel
+	coords,atom_names,residue_indices = [],[],[]
+	# loop over polymers
+	for wnum,walker in enumerate(walkers):
+		for pnum,pt in enumerate(walker):
+			coords.append(pt)	
+			#! coarse-grained mapping: three points per monomer
+			for i in range(2):
+				#! randomly place sidechain points 1 a0 distance away. map 0 to 1 to -1 to 1
+				coords.append(pt+(1-2*np.random.rand(3))/10.)
+			if pnum==0: atom_name_letter = 'S'
+			elif pnum<n_p-1: atom_name_letter = 'M'
+			elif pnum==n_p-1: atom_name_letter = 'E'
+			else: raise Exception
+			atom_names.extend(['%sB%d'%(atom_name_letter,i) for i in range(1,3+1)])
+			residue_indices.extend([wnum+1 for i in range(3)])
+	coords = np.array(coords)*a0
+	atom_names = np.array(atom_names)
+	residue_indices = np.array(residue_indices)
+	residue_names = np.array([monomer_resname for p in coords])
+	#! note that the box is dilated a bit to avoid a jammed system
+	box_extra = 1.0
+	polymer = GMXStructure(pts=coords,residue_indices=residue_indices,
+		residue_names=residue_names,atom_names=atom_names,box=[sizer*a0*box_extra for i in range(3)])
+	polymer.write(state.here+'%s.gro'%name)
+	component(polymer_molname,count=len(walkers))
+	#! also add the itp here
+	state.itp = ['dextran.itp']
+
 def forward_mapper():
 	"""
 	Compute statistics from an atomistic polymer on a coarse-grained mapping.
@@ -1655,22 +1576,25 @@ def forward_mapper():
 	#---! move this into the class?
 	lenscale = 10.0
 	mass_table = {'H':1.008,'C':12.011,'O':15.999,'N':14.007,'P':30.974}
-
 	#---the atomistic reference tells us how to get molecules from that simulation
 	molecule_map = ref_specs.get('molecule_map',None)
 	#---read the statistics for a single molecule
+	#---prepare a crude structure for the atomistic points
+	#---! this block might be included in the model class but for now it's only tangent
+	fine = dict(molecule_map=molecule_map,selection=ref_specs['selection'])
+	fine.update(resnums=sel.resnums,names=sel.names)
+	fine.update(masses=np.array([mass_table[i[0]] for i in fine['names']]))
+	model.add_representation('fine',**fine)
+	# after preparing fine we make the coarse model
 	if molecule_map == 'one molecule many residues injective':
-		#---prepare a crude structure for the atomistic points
-		#---! this block might be included in the model class but for now it's only tangent
-		fine = dict(molecule_map=molecule_map,selection=ref_specs['selection'])
-		fine.update(resnums=sel.resnums,names=sel.names)
-		#---include masses
-		fine.update(masses=np.array([mass_table[i[0]] for i in fine['names']]))
-		model.add_representation('fine',**fine)
 		model.build_fine_to_coarse('fine','coarse')
+	elif molecule_map == 'one molecule many residues bigger':
+		model.build_fine_to_coarse('fine','coarse',molecule_map='one molecule many residues injective')
+		specs = dict(nres=settings.melt_settings['n_p'],molecule_map='one molecule many residues bigger')
+		model.build_fine_to_coarse('fine','coarse_big',**specs)
 	else: raise Exception('invalid molecule map %s'%molecule_map)
 
-	#---reduce each frame of the trajectory to coarse-grained coordinates
+	#---reduce each frame of theectory to coarse-grained coordinates
 	nframes = len(uni.trajectory)
 	frame_skip = 100
 	n_cg_beads = model.reps['coarse']['length']
@@ -1682,7 +1606,6 @@ def forward_mapper():
 
 	#---! crude method to write the coarse-grained trajectory for review
 	if True:
-
 		residue_indices = model.reps['coarse']['resnums']
 		atom_names = model.reps['coarse']['names']
 		residue_names = np.array(['AGC' for i in residue_indices])
@@ -1715,4 +1638,6 @@ def forward_mapper():
 	#---read the mapping
 	with open(settings.model_spec) as fp: model_spec = yaml.load(fp.read())
 	#---create a model from the mapping
+	#! make the following line contingent on whether we are doing injective or bigger?
 	model.interpret_model('coarse',coords_red,**model_spec)
+	model.interpret_model('coarse_big',coords_red,**model_spec)
