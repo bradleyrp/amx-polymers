@@ -1,4 +1,5 @@
 model:
+  do_dihedrals: False
   #!? more specific style
   style: martini
   by_part:
