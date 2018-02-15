@@ -145,7 +145,7 @@ USE NOTES:|
 		this is possibly a result of the small system size. see dextran_model_building_single_large below
 
 step: tune-fine-to-coarse
-mapping spec: @polymers/dextran_atomistic_to_martini.yaml
+mapping spec: @polymers/dextran_atomistic_to_martini_v1.yaml
 model spec: @polymers/dextran_cg_model_v1.yaml
 atomistic reference:| {
 	'path':'../melt-v011/s01-melt',
@@ -206,7 +206,7 @@ USE NOTES:|
 	Tested provisionally, with dihedrals disabled in melts.py. Stability problems need to be overcome.
 
 step: tune-fine-to-coarse
-mapping spec: @polymers/dextran_atomistic_to_martini.yaml
+mapping spec: @polymers/dextran_atomistic_to_martini_v1.yaml
 model spec: @polymers/dextran_cg_model_v1.yaml
 atomistic reference:| {
 	'path':'/home/rpb/omicron/dataset-project-polymers/melt-v011/s01-melt',
@@ -263,7 +263,7 @@ USE NOTES:|
 	Tested provisionally, with no ...
 
 step: tune-fine-to-coarse
-mapping spec: @polymers/dextran_atomistic_to_martini.yaml
+mapping spec: @polymers/dextran_atomistic_to_martini_v1.yaml
 model spec: @polymers/dextran_cg_model_v1.yaml
 atomistic reference:| {
 	'path':'../melt-v011/s01-melt',
@@ -303,7 +303,7 @@ sol: W
 solvent: martini-water
 # set the polymer size below
 melt settings: {'n_p':30}
-# settings for t he starting melt structure
+# settings for the starting melt structure
 lattice melt settings: {'n_p':30,'volume_limit':0.05,'a0':0.35,'sizer':20}
 """},
 

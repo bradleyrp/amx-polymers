@@ -407,7 +407,6 @@ class MultiScaleModel:
 				ax.plot(mids,scipy.stats.norm.pdf(mids,mu,std),c='r',zorder=2)
 				ax.set_title({2:'bond',3:'angle',4:'dihedral'}[nbeads]+' '+'-'.join([str(i) for i in bond]))
 				ax_count += 1
-		fig.tight_layout()
 		plt.savefig('bonds_review%s.png'%('_general' if general_bonds else ''))
 		# plot histograms of the widths
 		fig = plt.figure()
@@ -425,14 +424,21 @@ class MultiScaleModel:
 		# convert normal distribution standard deviations to force constants. note that this
 		# ... also serves as a filter to exclude certain bonds with wide distributions. see the 
 		# ... bonds_review_width figures to see where to draw the cutoff
-		def filter_angles(std):
-			if std<=3: return 25.
-			else: return 0.
-		def filter_dihedrals(std):
+		def filter_angles(std,**kwargs):
+			#! previously we stratified angles by the gaussian widths
+			if False:
+				if std<=3: return 25.
+				else: return 0.
+			#! strong angles inside monomers
+			if set(kwargs['names']) in [{'SB1','SB2','SB3'},{'MB1','MB2','MB3'},{'EB1','EB2','EB3'}]:
+				return 100.
+			else: return 20.
+		def filter_dihedrals(std,**kwargs):
 			return 0 #! dihedrals cause crashes!
 			if std<=4: return 5.
 			else: return 0.
-		def filter_bonds(std): return 10000.
+		def filter_bonds(std,**kwargs): 
+			return 10000.
 
 		# only filter the bonds if we are not remembering them for a second pass
 		if not remember_bonds:
@@ -443,7 +449,9 @@ class MultiScaleModel:
 				filter_func = {2:filter_bonds,3:filter_angles,4:filter_dihedrals}[nbeads]
 				letters = {2:'ij',3:'ijk',4:'ijkl'}[nbeads]
 				for subject in subjects:
-					strength = filter_func(bond_stats[nbeads][tuple([subject[k] for k in letters])]['std'])
+					names = [[a['atom'] for a in atoms if a['id']==subject[l]][0] for l in letters]
+					strength = filter_func(bond_stats[nbeads][tuple([subject[k] for k in letters])]['std'],
+						names=names)
 					if strength>0:
 						reworked.append(subject)
 						reworked[-1]['force'] = strength
