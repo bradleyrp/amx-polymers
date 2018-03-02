@@ -244,6 +244,7 @@ sol: W
 solvent: martini-water
 # set the desired polymer size below
 melt settings: {'n_p':30,'a0':0.356,'angle':90.0,'torsion':142.0}
+bond tuners code: @polymers/dextran_tuners_v1.py
 """},
 
 'dextran_model_building_melt':{

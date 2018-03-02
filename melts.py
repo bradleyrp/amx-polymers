@@ -421,24 +421,11 @@ class MultiScaleModel:
 			ax.set_ylabel('counts')
 		plt.savefig('bonds_review_widths%s.png'%('_general' if general_bonds else ''))
 
-		# convert normal distribution standard deviations to force constants. note that this
-		# ... also serves as a filter to exclude certain bonds with wide distributions. see the 
-		# ... bonds_review_width figures to see where to draw the cutoff
-		def filter_angles(std,**kwargs):
-			#! previously we stratified angles by the gaussian widths
-			if False:
-				if std<=3: return 25.
-				else: return 0.
-			#! strong angles inside monomers
-			if set(kwargs['names']) in [{'SB1','SB2','SB3'},{'MB1','MB2','MB3'},{'EB1','EB2','EB3'}]:
-				return 100.
-			else: return 20.
-		def filter_dihedrals(std,**kwargs):
-			return 0 #! dihedrals cause crashes!
-			if std<=4: return 5.
-			else: return 0.
-		def filter_bonds(std,**kwargs): 
-			return 10000.
+		from makeface import import_remote
+		incoming_filter_functions = import_remote(settings.bond_tuners_code)
+		filter_bonds = incoming_filter_functions['filter_bonds']
+		filter_angles = incoming_filter_functions['filter_angles']
+		filter_dihedrals = incoming_filter_functions['filter_dihedrals']
 
 		# only filter the bonds if we are not remembering them for a second pass
 		if not remember_bonds:
