@@ -11,6 +11,7 @@ state.forward_dn = str(state.here)
 make_step('coarse')
 #! hardcoded name
 shutil.copyfile(state.forward_dn+'dextran.itp',state.here+'dextran.itp')
+shutil.copyfile(state.forward_dn+'dextran_constraints.itp',state.here+'dextran_constraints.itp')
 write_mdp()
 write_continue_script()
 if not state.q('lattice_melt_settings',False): make_polymer(name='vacuum')
@@ -26,4 +27,7 @@ with open(state.here+'system.top','a') as fp:
 	fp.write('%s %d\n'%(state.q('sol','SOL'),component(state.q('sol','SOL'))))
 copy_file('system.top','solvate.top')
 copy_file('solvate-minimized.gro','system.gro')
+if settings.get('do_constraints',False):
+	state.itp = ['dextran_constraints.itp']
+	write_topology('system.top')
 equilibrate()

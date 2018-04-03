@@ -10,3 +10,9 @@ cg_bonds -tpr s02-coarse/md-short1.tpr -gmx gmx -cutoff 20
 mol delrep 0 top
 mol selection "not resname W"
 mol addrep top
+
+mol addrep top
+mol modstyle 1 0 Points 6.000000
+
+# mol smoothrep 0 0 5
+# mol smoothrep 0 1 5

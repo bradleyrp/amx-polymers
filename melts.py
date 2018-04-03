@@ -248,9 +248,13 @@ class MultiScaleModel:
 		bonds_review = dict([(i,{}) for i in [2,3,4]])
 		# loop over angles and dihedrals
 		for nbeads in [2,3,4]:
-			bead_candidates = list(set([tuple(sorted([i.num for i in a])) 
-				for a in get_paths(molecule.atoms,d=nbeads)]))
-			valid_bonds = [i for i in bead_candidates if len(set(list(i)))==nbeads]
+			bead_candidates = []
+			for a in get_paths(molecule.atoms,d=nbeads):
+				this = [i.num for i in a]
+				if (this not in bead_candidates and this[::-1] not in bead_candidates 
+					and len(set(this))==nbeads):
+					bead_candidates.append(this)
+			valid_bonds = bead_candidates
 			# loop over these bonds
 			for beads in sorted(valid_bonds):
 				if nbeads==2:
@@ -335,9 +339,7 @@ class MultiScaleModel:
 						# observations are instance of angle type by frames by bead by XYZ
 						# ... note that for middle beads we have more than one instance of the angle type
 						obs = np.array([coords[:,i] for i in np.array(angle_matches)])
-						try: vecsAB = obs[:,:,2]-obs[:,:,1]
-						except: 
-							import ipdb;ipdb.set_trace()
+						vecsAB = obs[:,:,2]-obs[:,:,1]
 						vecsCB = obs[:,:,0]-obs[:,:,1]
 						angles_measured = np.array([np.array([vecangle(i,j) 
 							for i,j in zip(vecsAB[iii],vecsCB[iii])]) for iii in range(len(vecsAB))])
@@ -426,6 +428,7 @@ class MultiScaleModel:
 		filter_bonds = incoming_filter_functions['filter_bonds']
 		filter_angles = incoming_filter_functions['filter_angles']
 		filter_dihedrals = incoming_filter_functions['filter_dihedrals']
+		scale_bonds = incoming_filter_functions.get('scale_bonds',lambda x:x)
 
 		# only filter the bonds if we are not remembering them for a second pass
 		if not remember_bonds:
@@ -437,11 +440,14 @@ class MultiScaleModel:
 				letters = {2:'ij',3:'ijk',4:'ijkl'}[nbeads]
 				for subject in subjects:
 					names = [[a['atom'] for a in atoms if a['id']==subject[l]][0] for l in letters]
-					strength = filter_func(bond_stats[nbeads][tuple([subject[k] for k in letters])]['std'],
-						names=names)
+					resids = [[a['resnr'] for a in atoms if a['id']==subject[l]][0] for l in letters]
+					strength = filter_func(bond_stats[nbeads][tuple([subject[k] 
+						for k in letters])]['std'],names=names,resids=resids)
 					if strength>0:
 						reworked.append(subject)
 						reworked[-1]['force'] = strength
+						if nbeads==2:
+							reworked[-1]['length'] = scale_bonds(reworked[-1]['length'])
 				print('[NOTE] %d/%d %s are remaining after the filter'%(
 					len(reworked),len(subjects),{2:'bonds',3:'angles',4:'dihedrals'}[nbeads]))
 				if nbeads==2: bonds = reworked
@@ -458,7 +464,29 @@ class MultiScaleModel:
 			#! note that you have to pass in moleculetype or the ITP is incomplete
 			new_top.molecules['DEX'] = dict(moleculetype=dict(molname='DEX',nrexcl=3),
 				atoms=atoms,angles=angles,dihedrals=dihedrals,**bonds_constraints)
+			if settings.get('no_terminals',False):
+				mol = new_top.molecules['DEX']
+				discards = range(1,3+1)+range(len(mol['atoms']),len(mol['atoms'])-3,-1)[::-1]
+				new_atoms = []
+				for ii in range(3,len(mol['atoms'])-3):
+					new_atoms.append(mol['atoms'][ii])
+					new_atoms[-1]['id'] -= 3
+					new_atoms[-1]['resnr'] -= 1
+				mol['atoms'] = new_atoms
+				for btype in ['bonds','angles','dihedrals']:
+					new_set = []
+					letters = {'bonds':'ij','angles':'ijk','dihedrals':'ijkl'}
+					if btype not in mol: continue
+					for item in mol[btype]:
+						if any([item[l] in discards for l in letters[btype]]): continue
+						for l in letters[btype]: item[l] -= 3
+						new_set.append(item)
+					mol[btype] = new_set
+			#! constraints
 			new_top.write(state.here+'dextran.itp')
+			#! writing multiple topologies
+			mol['constraints'] = mol.pop('bonds')
+			new_top.write(state.here+'dextran_constraints.itp')
 
 ### CONSTRUCTION FUNCTIONS (simple functions which build a starting structure)
 
@@ -486,9 +514,16 @@ def make_polymer(name='melt',**kwargs):
 	residue_names = np.array([monomer_resname for p in points_with_sides])
 	residue_indices = np.array([i/3+1 for i in range((n_p)*3)])
 	#! hardcoding the naming scheme here but it would be useful to get this from the YAML file!
-	atom_names = np.array(['%sB%d'%(l,i) for l in 'S'+'M'*(n_p-2)+'E' for i in range(1,3+1)])
-	polymer = GMXStructure(pts=points_with_sides,residue_indices=residue_indices,
-		residue_names=residue_names,atom_names=atom_names,box=[10.,10.,10.])
+	#! working on no terminals
+	if True: atom_names = np.array(['%sB%d'%(l,i) for l in 'S'+'M'*(n_p-2)+'E' for i in range(1,3+1)])
+	else: atom_names = np.array(['%sB%d'%(l,i) for l in 'M'+'M'*(n_p-2)+'M' for i in range(1,3+1)])
+	if not settings.get('no_terminals',False):
+		polymer = GMXStructure(pts=points_with_sides,residue_indices=residue_indices,
+			residue_names=residue_names,atom_names=atom_names,box=[10.,10.,10.])
+	else: 
+		sl = slice(3,-3)
+		polymer = GMXStructure(pts=points_with_sides[sl],residue_indices=residue_indices[sl],
+			residue_names=residue_names[sl],atom_names=atom_names[sl],box=[10.,10.,10.])
 	polymer.write(state.here+'%s-built.gro'%name)
 	gmx('editconf',structure='%s-built'%name,gro=name,c=True,log='editconf-center-polymer')
 	#---add to the composition
@@ -545,7 +580,7 @@ def make_crude_coarse_polymer(name='vacuum',diagonals=False,review=False):
 		# loop
 		this_walk = [pos]
 		failure = False
-		while size<n_p-1:
+		while size<(n_p-1+(-2 if settings.get('no_terminals',False) else 0)):
 			ways = list(filter(lambda n : walks[n]==0,neighbors(*pos)))
 			if not ways:
 				failure = True
@@ -569,10 +604,13 @@ def make_crude_coarse_polymer(name='vacuum',diagonals=False,review=False):
 			for i in range(2):
 				#! randomly place sidechain points 1 a0 distance away. map 0 to 1 to -1 to 1
 				coords.append(pt+(1-2*np.random.rand(3))/10.)
-			if pnum==0: atom_name_letter = 'S'
-			elif pnum<n_p-1: atom_name_letter = 'M'
-			elif pnum==n_p-1: atom_name_letter = 'E'
-			else: raise Exception
+				#! let's eliminate terminals for now!
+				if not settings.get('no_terminals',False):
+					if pnum==0: atom_name_letter = 'S'
+					elif pnum<n_p-1: atom_name_letter = 'M'
+					elif pnum==n_p-1: atom_name_letter = 'E'
+					else: raise Exception
+				else: atom_name_letter = 'M'
 			atom_names.extend(['%sB%d'%(atom_name_letter,i) for i in range(1,3+1)])
 			residue_indices.extend([wnum+1 for i in range(3)])
 	coords = np.array(coords)*a0

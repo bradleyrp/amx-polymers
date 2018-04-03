@@ -145,8 +145,8 @@ USE NOTES:|
 		this is possibly a result of the small system size. see dextran_model_building_single_large below
 
 step: tune-fine-to-coarse
-mapping spec: @polymers/dextran_atomistic_to_martini_v1.yaml
-model spec: @polymers/dextran_cg_model_v1.yaml
+mapping spec: @polymers/dextran_atomistic_to_martini_v3.yaml
+model spec: @polymers/dextran_cg_model_v3.yaml
 atomistic reference:| {
 	'path':'../melt-v011/s01-melt',
 	'gro':'system.gro','xtc':'md.parts.pbcmol.centered.xtc','n_monomers':5,
@@ -184,6 +184,7 @@ solvent: martini-water
 #! note that n_p must match the source data for the injective method
 #! note that the angle and torsion set the initial guess for the structure
 melt settings: {'n_p':5,'a0':0.356,'angle':90.0,'torsion':142.0,}
+bond tuners code: @polymers/dextran_tuners_v3.py
 """},
 
 'tune_polymer_large_single':{
@@ -206,8 +207,8 @@ USE NOTES:|
 	Tested provisionally, with dihedrals disabled in melts.py. Stability problems need to be overcome.
 
 step: tune-fine-to-coarse
-mapping spec: @polymers/dextran_atomistic_to_martini_v1.yaml
-model spec: @polymers/dextran_cg_model_v1.yaml
+mapping spec: @polymers/dextran_atomistic_to_martini_v3.yaml
+model spec: @polymers/dextran_cg_model_v3.yaml
 atomistic reference:| {
 	'path':'/home/rpb/omicron/dataset-project-polymers/melt-v011/s01-melt',
 	'gro':'system.gro','xtc':'md.parts.pbcmol.centered.xtc','n_monomers':5,
@@ -220,7 +221,7 @@ mdp specs:|{
 	'mdps':{
 		'input-em-steep-in.mdp':[{'integrator':'steep'}],
 		'input-md-short1-eq-in.mdp':[{'dt':0.001}],
-		'input-md-short2-eq-in.mdp':[{'dt':0.01}],
+		'input-md-short2-eq-in.mdp':[{'dt':0.01,'Pcoupl':'no'}],
 		'input-md-in.mdp':[{'dt':0.02,'couple':'couple','Pcoupl':'no'}],},}
 place specs:|{
 	'monomer':'algc.gro',
@@ -244,7 +245,9 @@ sol: W
 solvent: martini-water
 # set the desired polymer size below
 melt settings: {'n_p':30,'a0':0.356,'angle':90.0,'torsion':142.0}
-bond tuners code: @polymers/dextran_tuners_v1.py
+bond tuners code: @polymers/dextran_tuners_v3.py
+no terminals: True
+do constraints: False
 """},
 
 'dextran_model_building_melt':{
@@ -264,8 +267,8 @@ USE NOTES:|
 	Tested provisionally, with no ...
 
 step: tune-fine-to-coarse
-mapping spec: @polymers/dextran_atomistic_to_martini_v1.yaml
-model spec: @polymers/dextran_cg_model_v1.yaml
+mapping spec: @polymers/dextran_atomistic_to_martini_v3.yaml
+model spec: @polymers/dextran_cg_model_v3.yaml
 atomistic reference:| {
 	'path':'../melt-v011/s01-melt',
 	'gro':'system.gro','xtc':'md.parts.pbcmol.centered.xtc','n_monomers':5,
@@ -306,6 +309,9 @@ solvent: martini-water
 melt settings: {'n_p':30}
 # settings for the starting melt structure
 lattice melt settings: {'n_p':30,'volume_limit':0.05,'a0':0.35,'sizer':20}
+bond tuners code: @polymers/dextran_tuners_v3.py
+no terminals: True
+do constraints: False
 """},
 
 }
