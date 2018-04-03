@@ -306,6 +306,7 @@ solvent: martini-water
 melt settings: {'n_p':30}
 # settings for the starting melt structure
 lattice melt settings: {'n_p':30,'volume_limit':0.05,'a0':0.35,'sizer':20}
+bond tuners code: @polymers/dextran_tuners_v1.py
 """},
 
 }
