@@ -486,6 +486,7 @@ class MultiScaleModel:
 			new_top.write(state.here+'dextran.itp')
 			#! writing multiple topologies
 			mol['constraints'] = mol.pop('bonds')
+			for c in mol['constraints']: c.pop('force')
 			new_top.write(state.here+'dextran_constraints.itp')
 
 ### CONSTRUCTION FUNCTIONS (simple functions which build a starting structure)
@@ -625,6 +626,32 @@ def make_crude_coarse_polymer(name='vacuum',diagonals=False,review=False):
 	component(polymer_molname,count=len(walkers))
 	#! also add the itp here
 	state.itp = ['dextran.itp']
+
+def hydration_adjust(structure,gro):
+	"""..."""
+	water_ratio = state.lattice_melt_settings.get('water_ratio',None)
+	if water_ratio:
+		sol_resname = 'W'
+		subject_resname = 'DEX'
+		n_water_beads = dict(state.composition)[sol_resname]
+		n_polymer_beads = float(state.lattice_melt_settings['n_p'])*dict(state.composition)[subject_resname]
+		struct = GMXStructure(state.here+'%s.gro'%structure)
+		remove_waters = n_water_beads - water_ratio*n_polymer_beads
+		if remove_waters<0: raise Exception(('there are %s polymer beads and %s water beads so we cannot '
+			'hydrate to a level of %s')%(n_polymer_beads,n_water_beads,water_ratio))
+		water_inds = np.where(struct.residue_names==sol_resname)[0]
+		n_keep_waters = int(water_ratio*n_polymer_beads)
+		reindex = range(len(water_inds))
+		np.random.shuffle(reindex)
+		keeper_waters = np.sort(water_inds[reindex[:n_keep_waters]])
+		keepers = np.sort(np.concatenate([np.where(struct.residue_names!=sol_resname)[0],keeper_waters]))
+		struct.atom_names = struct.atom_names[keepers]
+		struct.residue_indices = struct.residue_indices[keepers]
+		struct.residue_names = struct.residue_names[keepers]
+		struct.points = struct.points[keepers]
+		struct.write(state.here+'%s.gro'%gro)
+		component(sol_resname,count=n_keep_waters)
+	else: copy_file('%s.gro'%structure,'%s.gro'%gro)
 
 ### INTERFACE FUNCTIONS, called from the simulation script, which perform the mappings
 
