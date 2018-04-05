@@ -31,4 +31,5 @@ copy_file('solvate-minimized.gro','system.gro')
 if settings.get('do_constraints',False):
 	state.itp = ['dextran_constraints.itp']
 	write_topology('system.top')
+write_structure_by_chain(structure='system',gro='system_chains')
 equilibrate()

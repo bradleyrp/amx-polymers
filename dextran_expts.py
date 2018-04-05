@@ -314,4 +314,30 @@ no terminals: True
 do constraints: False
 """},
 
+'dextran_model_building_melt_multiply':{
+#####
+####
+###
+##
+#
+#---a legacy test used to make a small bilayer for the structure-repo
+'tags':[],
+'metarun':[
+{'step':'XXX','do':'dextran_model_building_melt','settings':"""
+lattice melt settings: {'n_p':30,'volume_limit':0.05,'a0':0.35,'sizer':20,'water_ratio':0.5}
+do review plots: False
+"""},
+{'step':'large','do':'multiply_general','settings':"""
+step: large
+requires: multiply
+equilibration: ['short1','short2','short3']
+rename_detected_composition: {'DMR':'DEX'}
+maxwarn: 4
+minimize: True
+proceed: True
+genconf gap: 0.3
+nx: 5
+ny: 5
+"""}]},
+
 }

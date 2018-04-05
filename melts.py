@@ -385,15 +385,9 @@ class MultiScaleModel:
 						dihedrals.append(new_dihedral)
 				else: raise Exception('development note. cannot generate abond with %d beads'%nbeads)
 
-		# report the bond distributions
-		import matplotlib as mpl
-		import matplotlib.pyplot as plt
+		# save the bond distributions
 		import scipy
 		import scipy.stats
-		from plotter_omni_panels import square_tiles
-		n_bonds = sum([len(bonds_review[i].keys()) for i in [2,3,4]])
-		axes,fig = square_tiles(n_bonds,figsize=(15.),favor_rows=True,wspace=0.4,hspace=0.4)
-		ax_count = 0
 		bond_stats = dict([(i,{}) for i in [2,3,4]])
 		for anum,nbeads in enumerate([2,3,4]):
 			vals_cat = np.concatenate(bonds_review[nbeads].values())
@@ -404,24 +398,42 @@ class MultiScaleModel:
 				mids = (edges[1:]+edges[:-1])/2.
 				mu,std = scipy.stats.norm.fit(obs)
 				bond_stats[nbeads][bond] = dict(mu=mu,std=std)
-				ax = axes[ax_count]
-				ax.plot(mids,counts,c='k')
-				ax.plot(mids,scipy.stats.norm.pdf(mids,mu,std),c='r',zorder=2)
-				ax.set_title({2:'bond',3:'angle',4:'dihedral'}[nbeads]+' '+'-'.join([str(i) for i in bond]))
-				ax_count += 1
-		plt.savefig('bonds_review%s.png'%('_general' if general_bonds else ''))
-		# plot histograms of the widths
-		fig = plt.figure()
-		axes = [plt.subplot(k) for k in [211,212]]
-		for anum,nbeads in enumerate([3,4]):
-			vals = [v['std'] for k,v in bond_stats[nbeads].items()]
-			counts,edges = np.histogram(vals,bins=len(vals))
-			ax = axes[anum]
-			ax.bar((edges[1:]+edges[:-1])/2.,counts)
-			ax.set_title('%s std'%{2:'bond',3:'angle',4:'dihedral'}[nbeads])
-			ax.set_xlabel('std')
-			ax.set_ylabel('counts')
-		plt.savefig('bonds_review_widths%s.png'%('_general' if general_bonds else ''))
+		if settings.get('do_review_plots',False):
+			import matplotlib as mpl
+			import matplotlib.pyplot as plt
+			from plotter_omni_panels import square_tiles
+			n_bonds = sum([len(bonds_review[i].keys()) for i in [2,3,4]])
+			# report the bond distributions
+			axes,fig = square_tiles(n_bonds,figsize=(15.),favor_rows=True,wspace=0.4,hspace=0.4)
+			ax_count = 0
+			for anum,nbeads in enumerate([2,3,4]):
+				vals_cat = np.concatenate(bonds_review[nbeads].values())
+				bins = np.linspace(vals_cat.min(),vals_cat.max(),100)
+				for bnum,bond in enumerate(bonds_review[nbeads].keys()):
+					obs = bonds_review[nbeads][bond]
+					counts,edges = np.histogram(obs,bins=bins,normed=True)
+					mids = (edges[1:]+edges[:-1])/2.
+					mu,std = scipy.stats.norm.fit(obs)
+					ax = axes[ax_count]
+					ax.plot(mids,counts,c='k')
+					ax.plot(mids,scipy.stats.norm.pdf(mids,mu,std),c='r',zorder=2)
+					ax.set_title({2:'bond',3:'angle',4:'dihedral'}[nbeads]+' '+'-'.join([str(i) 
+						for i in bond]))
+					ax_count += 1
+			# plot histograms of the widths
+			fig = plt.figure()
+			axes = [plt.subplot(k) for k in [211,212]]
+			for anum,nbeads in enumerate([3,4]):
+				vals = [v['std'] for k,v in bond_stats[nbeads].items()]
+				counts,edges = np.histogram(vals,bins=len(vals))
+				ax = axes[anum]
+				ax.bar((edges[1:]+edges[:-1])/2.,counts)
+				ax.set_title('%s std'%{2:'bond',3:'angle',4:'dihedral'}[nbeads])
+				ax.set_xlabel('std')
+				ax.set_ylabel('counts')
+			plt.savefig('bonds_review_widths%s.png'%('_general' if general_bonds else ''))
+
+
 
 		from makeface import import_remote
 		incoming_filter_functions = import_remote(settings.bond_tuners_code)
@@ -652,6 +664,21 @@ def hydration_adjust(structure,gro):
 		struct.write(state.here+'%s.gro'%gro)
 		component(sol_resname,count=n_keep_waters)
 	else: copy_file('%s.gro'%structure,'%s.gro'%gro)
+
+def write_structure_by_chain(structure='system',gro='system_chains'):
+	"""..."""
+	struct = GMXStructure(state.here+'%s.gro'%structure)
+	subject_resname = 'DEX'
+	subject_resname = 'DMR'
+	inds = np.where(struct.residue_names=='DMR')[0]
+	#! assume that we only have a uniform melt of n_p, three beads per, minus two from the end points
+	n_p = state.lattice_melt_settings['n_p']
+	if not float(len(inds))/3./(n_p-2)==component('DEX'): 
+		status('failed to write structure by chains',tag='warning')
+		return
+	resnums = (np.floor(np.arange(len(inds))/((n_p-2)*3))+1).astype(int)
+	struct.residue_indices[inds] = resnums
+	struct.write(state.here+'%s.gro'%gro)
 
 ### INTERFACE FUNCTIONS, called from the simulation script, which perform the mappings
 
