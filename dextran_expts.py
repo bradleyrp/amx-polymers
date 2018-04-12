@@ -329,7 +329,7 @@ do constraints: False
 ##
 #
 #---a legacy test used to make a small bilayer for the structure-repo
-'tags':[],
+'tags':['tested_2018.04.11'],
 'metarun':[
 {'step':'XXX','do':'dextran_model_building_melt','settings':"""
 lattice melt settings: {'n_p':55,'volume_limit':0.05,'a0':0.35,'sizer':20,'water_ratio':1.5}
