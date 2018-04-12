@@ -351,7 +351,6 @@
 			},
 		},
 	},
-#---MDP settings group for atomistic CHARMM simulations (ryan thinks this comment is wrong and this is MARTINI?)
 'cgmd-polymers':{
 	#---defaults for redundant options (use None if only one)
 	'defaults':{
@@ -394,22 +393,22 @@
 			'tcoupl':'V-rescale',
 			'tc-grps':'system',
 			'tau_t':1.0,
-			'ref_t':320,
+			'ref_t':298,
 			'Pcoupl':'Parrinello-Rahman',
 			'Pcoupltype':'isotropic',
 			'tau_p':10.0,
-			'compressibility':'5e-5',
+			'compressibility':'5e-6',
 			'ref_p':1.0,
 			},
 		'couple_weak':{
 			'tcoupl':'Berendsen',
 			'tc-grps':'system',
 			'tau_t':1.0,
-			'ref_t':320,
+			'ref_t':298,
 			'Pcoupl':'Berendsen',
 			'Pcoupltype':'isotropic',
 			'tau_p':2.0,
-			'compressibility':'5e-5',
+			'compressibility':'5e-6',
 			'ref_p':1.0,
 			},
 		},
