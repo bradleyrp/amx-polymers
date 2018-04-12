@@ -145,8 +145,8 @@ USE NOTES:|
 		this is possibly a result of the small system size. see dextran_model_building_single_large below
 
 step: tune-fine-to-coarse
-mapping spec: @polymers/dextran_atomistic_to_martini_v3.yaml
-model spec: @polymers/dextran_cg_model_v3.yaml
+mapping spec: @polymers/dextran_models/dextran_atomistic_to_martini_v3.yaml
+model spec: @polymers/dextran_models/dextran_cg_model_v3.yaml
 atomistic reference:| {
 	'path':'../melt-v011/s01-melt',
 	'gro':'system.gro','xtc':'md.parts.pbcmol.centered.xtc','n_monomers':5,
@@ -184,7 +184,7 @@ solvent: martini-water
 #! note that n_p must match the source data for the injective method
 #! note that the angle and torsion set the initial guess for the structure
 melt settings: {'n_p':5,'a0':0.356,'angle':90.0,'torsion':142.0,}
-bond tuners code: @polymers/dextran_tuners_v3.py
+bond tuners code: @polymers/dextran_models/dextran_tuners_v3.py
 """},
 
 'tune_polymer_large_single':{
@@ -193,7 +193,7 @@ bond tuners code: @polymers/dextran_tuners_v3.py
 ###
 ##
 #
-'tags':['cgmd','tested_2018.02.14'],
+'tags':['cgmd','tested_2018.04.11'],
 'script':'script-multiscale.py',
 'params':'parameters.py',
 'extensions':['melts.py','melts_simple.py','plotter_omni_panels.py'],
@@ -207,12 +207,17 @@ USE NOTES:|
 	Tested provisionally, with dihedrals disabled in melts.py. Stability problems need to be overcome.
 
 step: tune-fine-to-coarse
-mapping spec: @polymers/dextran_atomistic_to_martini_v3.yaml
-model spec: @polymers/dextran_cg_model_v3.yaml
+mapping spec: @polymers/dextran_models/dextran_atomistic_to_martini_v3.yaml
+model spec: @polymers/dextran_models/dextran_cg_model_v3.yaml
 atomistic reference:| {
 	'path':'/home/rpb/omicron/dataset-project-polymers/melt-v011/s01-melt',
 	'gro':'system.gro','xtc':'md.parts.pbcmol.centered.xtc','n_monomers':5,
 	'molecule_map':'one molecule many residues bigger','selection':'resname AGLC'}
+molecule name: DEX
+residue name: DMR
+beads per monomer: 3
+n_p: 30
+
 files: ['@martini/library-general-structs/martini-water.gro']
 sources: ['inputs/martini/martini-sources.ff']
 maxwarn: 2
@@ -245,7 +250,7 @@ sol: W
 solvent: martini-water
 # set the desired polymer size below
 melt settings: {'n_p':30,'a0':0.356,'angle':90.0,'torsion':142.0}
-bond tuners code: @polymers/dextran_tuners_v3.py
+bond tuners code: @polymers/dextran_models/dextran_tuners_v3.py
 no terminals: True
 do constraints: False
 """},
@@ -267,8 +272,8 @@ USE NOTES:|
 	Tested provisionally, with no ...
 
 step: tune-fine-to-coarse
-mapping spec: @polymers/dextran_atomistic_to_martini_v3.yaml
-model spec: @polymers/dextran_cg_model_v3.yaml
+mapping spec: @polymers/dextran_models/dextran_atomistic_to_martini_v3.yaml
+model spec: @polymers/dextran_models/dextran_cg_model_v3.yaml
 atomistic reference:| {
 	'path':'../melt-v011/s01-melt',
 	'gro':'system.gro','xtc':'md.parts.pbcmol.centered.xtc','n_monomers':5,
@@ -283,7 +288,7 @@ mdp specs:|{
 		'input-em-steep-in.mdp':[{'integrator':'steep'}],
 		'input-md-short1-eq-in.mdp':[{'dt':0.001,'Pcoupl':'no'}],
 		'input-md-short2-eq-in.mdp':[{'dt':0.001,'tau_p':1.0,'compressibility':'5e-5'}],
-		'input-md-short3-eq-in.mdp':[{'dt':0.005,'tau_p':1.0,'compressibility':'5e-5'}],
+		'input-md-short3-eq-in.mdp':[{'dt':0.005,'tau_p':1.0,'compressibility':'5e-5',}],
 		'input-md-in.mdp':[{'dt':0.02}],},}
 place specs:|{
 	'monomer':'algc.gro',
@@ -296,7 +301,10 @@ place specs:|{
 		'to':'CC3162','atom':'C1','which':'next'},
 		{'from':'CC321','from_charge':0.050,'to_charge':0.00,
 		'to':'CC321','atom':'C6','which':'previous'}]}
-polymer name: AGLC
+molecule name: DEX
+residue name: DMR
+beads per monomer: 3
+n_p: 30
 equilibration: ['short1','short2','short3']
 force field: martini-sources
 aglc source: None
@@ -309,7 +317,7 @@ solvent: martini-water
 melt settings: {'n_p':30}
 # settings for the starting melt structure
 lattice melt settings: {'n_p':30,'volume_limit':0.05,'a0':0.35,'sizer':50,'water_ratio':0.5}
-bond tuners code: @polymers/dextran_tuners_v3.py
+bond tuners code: @polymers/dextran_models/dextran_tuners_v3.py
 no terminals: True
 do constraints: False
 """},
@@ -324,20 +332,44 @@ do constraints: False
 'tags':[],
 'metarun':[
 {'step':'XXX','do':'dextran_model_building_melt','settings':"""
-lattice melt settings: {'n_p':30,'volume_limit':0.05,'a0':0.35,'sizer':20,'water_ratio':0.5}
+lattice melt settings: {'n_p':55,'volume_limit':0.05,'a0':0.35,'sizer':20,'water_ratio':1.5}
 do review plots: False
+molecule name: DEX
+residue name: DMR
+beads per monomer: 3
+n_p: 55 #! must match below
+melt settings: {'n_p':55}
+mdp specs:|{
+	'group':'cgmd-polymers',
+	'mdps':{
+		'input-em-steep-in.mdp':[{'integrator':'steep'}],
+		'input-md-short1-eq-in.mdp':[{'dt':0.001,'Pcoupl':'no'}],
+		'input-md-short2-eq-in.mdp':[{'dt':0.001,'ref_p':'1.0 1.0 1.0 0.0 0.0 0.0','tau_p':'1.0','Pcoupltype':'anisotropic','compressibility':'5e-5 5e-5 5e-5 0.0 0.0 0.0'}],
+		'input-md-short3-eq-in.mdp':[{'dt':0.005,'ref_p':'1.0 1.0 1.0 0.0 0.0 0.0','tau_p':'1.0','Pcoupltype':'anisotropic','compressibility':'5e-5 5e-5 5e-5 0.0 0.0 0.0'}],
+		'input-md-in.mdp':[{'dt':0.02}],},}
 """},
 {'step':'large','do':'multiply_general','settings':"""
 step: large
 requires: multiply
 equilibration: ['short1','short2','short3']
 rename_detected_composition: {'DMR':'DEX'}
+#! repeated for restarts and write_chain...
+lattice melt settings: {'n_p':55,'volume_limit':0.05,'a0':0.35,'sizer':20,'water_ratio':1.5}
+#! hack below
+composition_adjust: "def composition_adjust(composition):\\n\\tcomposition_adjusted = []\\n\\tfor i,j in composition:\\n\\t\\tcomposition_adjusted.append([i,int(j/55.) if i=='DMR' else j])\\n\\treturn composition_adjusted"
 maxwarn: 4
 minimize: True
 proceed: True
 genconf gap: 0.3
-nx: 5
-ny: 5
+molecule name: DEX
+residue name: DMR
+beads per monomer: 3
+n_p: 55 #! make sure this matches n_p above
+nx: 2
+ny: 2
+nz: 2
 """}]},
+
+# redo the step above during development: rm -rf s03-large state.json && cp state_2.json state.json && make prep dextran_model_building_melt_multiply && cp expt_2.json expt.json && python -B script_2.py
 
 }

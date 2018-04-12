@@ -19,26 +19,26 @@ model:
             charge: 0
             mass: 60.0528 
       bonds:
-        - ['SB2','SB1']
-        - ['SB1','SB3']
+        - ['SB1','SB2']
+        - ['SB2','SB3']
     middle:
       resname: DMR
       atoms:
         - MB1:
-            type: P1
+            type: P2
             charge: 0
             mass: 60.0528 
         - MB2:
-            type: P1
+            type: N0
             charge: 0
             mass: 60.0528 
         - MB3:
-            type: P1
+            type: P4
             charge: 0
             mass: 60.0528 
       bonds:
         - ['MB1','MB2']
-        - ['MB1','MB3']
+        - ['MB2','MB3']
     terminus_end:
       resname: DET
       atoms:
@@ -56,17 +56,17 @@ model:
             mass: 60.0528 
       bonds:
         - ['EB1','EB2']
-        - ['EB1','EB3']
+        - ['EB2','EB3']
   between_parts:
     #! no repetition in the nesting
     terminus_start:
       middle:
         bonds:
-          - ['SB1','MB1']
+          - ['SB2','MB1']
     middle:
       middle:
         bonds:
-          - ['MB1','MB1']
+          - ['MB2','MB1']
       terminus_end:
         bonds:
-          - ['EB1','MB1']
+          - ['MB2','EB1']

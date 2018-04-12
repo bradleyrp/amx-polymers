@@ -1,5 +1,11 @@
 #!/usr/bin/env python
 
+"""
+Utility functions for making polymer melts.
+Oriented around the problem of getting accurate parameters for dextran, an oligoglucose 
+composed of 1,6-glycosidic linkages not yet standard in MARTINI.
+"""
+
 import os,re,subprocess
 import numpy as np
 import MDAnalysis
@@ -20,13 +26,13 @@ class MultiScaleModel:
 		mapping = kwargs.pop('mapping')
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		style = mapping.pop('style',None)
-		#---mappings which supply different "parts" (i.e. terminus or middle) of a polymer
+		# mappings which supply different "parts" (i.e. terminus or middle) of a polymer
 		if style == 'coarse_to_atomistic': 
 			self.style = style
 			self.parts = mapping.pop('by_part',{})
 		else: raise Exception('invalid style %s'%style)
 		if mapping: raise Exception('unprocessed mapping directives %s'%mapping)
-		#---shared variables
+		# shared variables
 		self.reps = {}
 
 	def add_representation(self,name,**kwargs):
@@ -459,7 +465,8 @@ class MultiScaleModel:
 						reworked.append(subject)
 						reworked[-1]['force'] = strength
 						if nbeads==2:
-							reworked[-1]['length'] = scale_bonds(reworked[-1]['length'])
+							reworked[-1]['length'] = scale_bonds(reworked[-1]['length'],
+								names=names,resids=resids,style='standard')
 				print('[NOTE] %d/%d %s are remaining after the filter'%(
 					len(reworked),len(subjects),{2:'bonds',3:'angles',4:'dihedrals'}[nbeads]))
 				if nbeads==2: bonds = reworked
@@ -508,29 +515,31 @@ def make_polymer(name='melt',**kwargs):
 	Make a melt by placing monomers according to an off-lattice walk.
 	This is the first section of make_cg_gel; the second section built the topology.
 	"""
-	polymer_molname = 'DEX'
-	monomer_resname = 'AGLC'
-	#---destination
+	polymer_molname = settings.molecule_name
+	monomer_resname = settings.residue_name
+	no_terminals = settings.get('no_terminals',False)
+	# destination
 	cwd = state.here
 	n_p = state.melt_settings['n_p']
 	angle,torsion = state.melt_settings['angle'],state.melt_settings['torsion']
 	a0 = state.melt_settings['a0']
-	#---prepare an abstract 3D walk
-	walk_abstract_pts = make_off_lattice_walk(n_p-1,a0,angle,torsion)
+	# prepare an abstract 3D walk
+	walk_abstract_pts = make_off_lattice_walk(n_p-1+(2 if no_terminals else 0),a0,angle,torsion)
 	points_with_sides = []
 	for pt in walk_abstract_pts:
 		points_with_sides.append(pt)
 		for i in range(2):
-			#---! randomly place sidechain points 1 a0 distance away. map 0 to 1 to -1 to 1
+			#! randomly place sidechain points 1 a0 distance away. map 0 to 1 to -1 to 1
 			points_with_sides.append(pt+(1-2*np.random.rand(3))/10.)
 	points_with_sides = np.array(points_with_sides)
 	residue_names = np.array([monomer_resname for p in points_with_sides])
 	residue_indices = np.array([i/3+1 for i in range((n_p)*3)])
 	#! hardcoding the naming scheme here but it would be useful to get this from the YAML file!
 	#! working on no terminals
-	if True: atom_names = np.array(['%sB%d'%(l,i) for l in 'S'+'M'*(n_p-2)+'E' for i in range(1,3+1)])
-	else: atom_names = np.array(['%sB%d'%(l,i) for l in 'M'+'M'*(n_p-2)+'M' for i in range(1,3+1)])
-	if not settings.get('no_terminals',False):
+	if settings.get('no_terminals',False): 
+		atom_names = np.array(['%sB%d'%(l,i) for l in 'S'+'M'*(n_p)+'E' for i in range(1,3+1)])
+	else: atom_names = np.array(['%sB%d'%(l,i) for l in 'M'+'M'*(n_p)+'M' for i in range(1,3+1)])
+	if not no_terminals:
 		polymer = GMXStructure(pts=points_with_sides,residue_indices=residue_indices,
 			residue_names=residue_names,atom_names=atom_names,box=[10.,10.,10.])
 	else: 
@@ -539,19 +548,58 @@ def make_polymer(name='melt',**kwargs):
 			residue_names=residue_names[sl],atom_names=atom_names[sl],box=[10.,10.,10.])
 	polymer.write(state.here+'%s-built.gro'%name)
 	gmx('editconf',structure='%s-built'%name,gro=name,c=True,log='editconf-center-polymer')
-	#---add to the composition
+	# add to the composition
 	state.itp = ['dextran.itp']
 	component(polymer_molname,count=1)
 
-def make_crude_coarse_polymer(name='vacuum',diagonals=False,review=False):
+def make_single_polymer():
+	"""
+	Make very crude estimate for coordinates for a single polymer for minimization.
+	To use this you must supply the correct ITP file and add it to the composition from your script.
+	This method was originally designed for using stock MARTINI maltoheptaose.
+	"""
+	n_p = settings.n_p
+	a0 = settings.a0
+	bpm = settings.beads_per_monomer
+	backbone_pos = settings.backbone_position
+	residue_name = settings.residue_name
+	#! note that we could send lambda functions directly in through YAML but they cannot write to state
+	atom_namer = eval(settings.atom_namer)
+	# backbone beads in a straight line along the x-direction
+	backbone_coords = np.transpose([np.arange(n_p)*a0,np.zeros(n_p),np.zeros(n_p)])
+	sidechains = np.array([[(1-2*np.random.rand(3))/10.+b for i in range(bpm-1)] for b in backbone_coords])
+	# interleave the backbone and sidechain by backbone position
+	bead_order = np.zeros(bpm)
+	bead_order[backbone_pos-1] = 1
+	coords = np.zeros((bpm*n_p,3))
+	side_place = np.where(bead_order==0)[0]
+	back_place = np.array([backbone_pos-1])
+	for mnum in range(n_p):
+		mono_coords_this = np.zeros((bpm,3))
+		mono_coords_this[side_place] = sidechains[mnum]
+		mono_coords_this[back_place] = backbone_coords[mnum]
+		coords[mnum*bpm:(mnum+1)*bpm] = mono_coords_this
+	atom_names = [atom_namer(i) for i in range(n_p*bpm)]
+	residue_indices = np.ones(n_p*bpm).astype(int)
+	residue_names = [residue_name for i in range(n_p*bpm)]
+	box_extra = 2. # make the box bigger
+	box_vectors = np.array([n_p*a0*box_extra for i in range(3)])
+	coords -= coords.mean(axis=0)
+	coords += box_vectors/2.
+	polymer = GMXStructure(pts=coords,residue_indices=residue_indices,
+		residue_names=residue_names,atom_names=atom_names,box=box_vectors)
+	polymer.write(state.here+'vacuum_crude.gro')
+
+def make_crude_coarse_polymer(name='vacuum',diagonals=False,review=False,**kwargs):
 	"""
 	Settings in the experiment bring you here, or above to `make_polymer`.
 	The `make_polymer` code above will make a single large molecule. 
 	This method will make a melt from a square lattice. 
+	See make_single_polymer for an alternative.
 	UNDER DEVELOPMENT.
 	"""
-	monomer_resname = 'AGLC'
-	polymer_molname = 'DEX'
+	monomer_resname = settings.residue_name
+	polymer_molname = settings.molecule_name
 	### MAKE A SQUARE LATTICE (recapitulated from make_gel_on_lattice)
 	cwd = state.here
 	# make a universe
@@ -593,7 +641,7 @@ def make_crude_coarse_polymer(name='vacuum',diagonals=False,review=False):
 		# loop
 		this_walk = [pos]
 		failure = False
-		while size<(n_p-1+(-2 if settings.get('no_terminals',False) else 0)):
+		while size<(n_p-1):
 			ways = list(filter(lambda n : walks[n]==0,neighbors(*pos)))
 			if not ways:
 				failure = True
@@ -627,6 +675,7 @@ def make_crude_coarse_polymer(name='vacuum',diagonals=False,review=False):
 			atom_names.extend(['%sB%d'%(atom_name_letter,i) for i in range(1,3+1)])
 			residue_indices.extend([wnum+1 for i in range(3)])
 	coords = np.array(coords)*a0
+	#! previously hacked the atom names for maltoheptaose but now we build with `gmx insert-molecules`
 	atom_names = np.array(atom_names)
 	residue_indices = np.array(residue_indices)
 	residue_names = np.array([monomer_resname for p in coords])
@@ -637,16 +686,18 @@ def make_crude_coarse_polymer(name='vacuum',diagonals=False,review=False):
 	polymer.write(state.here+'%s.gro'%name)
 	component(polymer_molname,count=len(walkers))
 	#! also add the itp here
-	state.itp = ['dextran.itp']
+	#! moved to the script: state.itp = ['dextran.itp']
 
 def hydration_adjust(structure,gro):
-	"""..."""
-	water_ratio = state.lattice_melt_settings.get('water_ratio',None)
+	"""
+	Reduce the hydration level to a fraction of CG polymer beads to water beads.
+	"""
+	water_ratio = state.q('water_ratio',None)
 	if water_ratio:
-		sol_resname = 'W'
-		subject_resname = 'DEX'
+		sol_resname = settings.get('sol','SOL')
+		polymer_molname = settings.molecule_name
 		n_water_beads = dict(state.composition)[sol_resname]
-		n_polymer_beads = float(state.lattice_melt_settings['n_p'])*dict(state.composition)[subject_resname]
+		n_polymer_beads = float(state.n_p)*dict(state.composition)[polymer_molname]
 		struct = GMXStructure(state.here+'%s.gro'%structure)
 		remove_waters = n_water_beads - water_ratio*n_polymer_beads
 		if remove_waters<0: raise Exception(('there are %s polymer beads and %s water beads so we cannot '
@@ -666,17 +717,21 @@ def hydration_adjust(structure,gro):
 	else: copy_file('%s.gro'%structure,'%s.gro'%gro)
 
 def write_structure_by_chain(structure='system',gro='system_chains'):
-	"""..."""
+	"""
+	Ensure that each chain has its own residue number. Useful for visualization.
+	"""
 	struct = GMXStructure(state.here+'%s.gro'%structure)
-	subject_resname = 'DEX'
-	subject_resname = 'DMR'
-	inds = np.where(struct.residue_names=='DMR')[0]
+	polymer_molname = settings.molecule_name
+	residue_name = settings.residue_name
+	#! previously used DMR in the line below and DEX below that, in the component on the if not
+	inds = np.where(struct.residue_names==residue_name)[0]
 	#! assume that we only have a uniform melt of n_p, three beads per, minus two from the end points
-	n_p = state.lattice_melt_settings['n_p']
-	if not float(len(inds))/3./(n_p-2)==component('DEX'): 
-		status('failed to write structure by chains',tag='warning')
-		return
-	resnums = (np.floor(np.arange(len(inds))/((n_p-2)*3))+1).astype(int)
+	n_p = state.n_p
+	bpm = settings.beads_per_monomer
+	#! removed a -2 correction to the n_p for use in maltoheptaose which was necessary for removing terminals
+	if not float(len(inds))/float(bpm)/(n_p)==component(polymer_molname): 
+		raise Exception('failed to write structure by chains')
+	resnums = (np.floor(np.arange(len(inds))/((n_p)*bpm))+1).astype(int)
 	struct.residue_indices[inds] = resnums
 	struct.write(state.here+'%s.gro'%gro)
 
@@ -711,12 +766,13 @@ def forward_mapper(write_coarse_coordinates=False,inspect_distributions=False):
 	fine.update(resnums=sel.resnums,names=sel.names)
 	fine.update(masses=np.array([mass_table[i[0]] for i in fine['names']]))
 	model.add_representation('fine',**fine)
+	nres = settings.melt_settings['n_p']+(2 if settings.get('no_terminals',False) else 0)
 	# after preparing fine we make the coarse model
 	if molecule_map == 'one molecule many residues injective':
 		model.build_fine_to_coarse('fine','coarse')
 	elif molecule_map == 'one molecule many residues bigger':
 		model.build_fine_to_coarse('fine','coarse',molecule_map='one molecule many residues injective')
-		specs = dict(nres=settings.melt_settings['n_p'],molecule_map='one molecule many residues bigger')
+		specs = dict(nres=nres,molecule_map='one molecule many residues bigger')
 		model.build_fine_to_coarse('fine','coarse_big',**specs)
 	else: raise Exception('invalid molecule map %s'%molecule_map)
 
