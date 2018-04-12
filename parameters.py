@@ -63,6 +63,12 @@
 			'tau_t':'0.1 0.1',
 			'ref_t':'300 300',
 			},
+		'bussi-ligand':{
+			'tcoupl':'V-rescale',
+			'tc_grps':'LIG Water',
+			'tau_t':'0.1 0.1',
+			'ref_t':'300 300',
+			},
 		'bussi-bilayer':{
 			'tcoupl':'V-rescale',
 			'tc_grps':'LIPIDS SOLVENT',
@@ -265,6 +271,14 @@
 		'continue':'start',
 		'output':'short',
 		'temperature':'bussi',
+		'pressure':'bilayer-berendsen',
+		'constrain':'all',
+		'integrate':'equilibrate',
+		},
+	'npt-ligand':{
+		'continue':'start',
+		'output':'short',
+		'temperature':'bussi-ligand',
 		'pressure':'bilayer-berendsen',
 		'constrain':'all',
 		'integrate':'equilibrate',

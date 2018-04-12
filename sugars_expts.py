@@ -61,7 +61,7 @@ mdp specs:|{
 ###
 ##
 #
-'tags':[],
+'tags':['cgmd'],
 'metarun':[
 #! step is not overriding step in the settings here
 {'step':'XXX','do':'maltoheptaose','settings':"""
