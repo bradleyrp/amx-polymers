@@ -823,3 +823,17 @@ def forward_mapper(write_coarse_coordinates=False,inspect_distributions=False):
 		model.interpret_model('coarse',coords_red,remember_bonds=False,**model_spec)
 	else: raise Exception
 	#! next: run the simulation, ensure it is stable, and analyze the bond distributions
+
+def add_antifreeze(structure,gro,ratio):
+	"""Add antifreeze particles."""
+	struct = GMXStructure(state.here+'%s.gro'%structure)
+	inds = np.where(struct.residue_names=='W')[0]
+	n_af = int(float(len(inds))*settings.antifreeze_ratio)
+	subsel = np.random.permutation(range(len(inds)))[:n_af]
+	struct.residue_names[inds[subsel]] = 'WF'
+	struct.atom_names[inds[subsel]] = 'WF'
+	component('W',count=component('W')-n_af)
+	component('WF',count=n_af)
+	#! requires rename_detected_composition
+	struct.regroup()
+	struct.write(state.here+'%s.gro'%gro)

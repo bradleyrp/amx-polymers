@@ -30,6 +30,7 @@ beads per monomer:  3                 # beads in each monomer
 backbone position:  3                 # which bead is the backbone
 nmol:               100               # molecules for `gmx insert-molecules`
 box size:           12.               # box size for `gmx insert-molecules`
+antifreeze ratio:   0.10              # whether to add antifreeze
 
 # a string holding a lambda function for naming beads
 #! consider modifying this to read the ITP directly?
@@ -67,6 +68,7 @@ mdp specs:|{
 {'step':'XXX','do':'maltoheptaose','settings':"""
 nmol:               10  # molecules for `gmx insert-molecules`
 box size:           5.  # box size for `gmx insert-molecules`
+rename_detected_composition: {'AMYL':'Maltoheptaose'}
 """},
 {'step':'large','do':'multiply_general','settings':"""
 step: large
