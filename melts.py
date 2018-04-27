@@ -586,6 +586,8 @@ def make_single_polymer():
 	box_vectors = np.array([n_p*a0*box_extra for i in range(3)])
 	coords -= coords.mean(axis=0)
 	coords += box_vectors/2.
+	# protect against tiny boxes
+	box_vectors = [max([10.,i]) for i in box_vectors]
 	polymer = GMXStructure(pts=coords,residue_indices=residue_indices,
 		residue_names=residue_names,atom_names=atom_names,box=box_vectors)
 	polymer.write(state.here+'vacuum_crude.gro')
@@ -701,7 +703,8 @@ def hydration_adjust(structure,gro):
 		struct = GMXStructure(state.here+'%s.gro'%structure)
 		remove_waters = n_water_beads - water_ratio*n_polymer_beads
 		if remove_waters<0: raise Exception(('there are %s polymer beads and %s water beads so we cannot '
-			'hydrate to a level of %s')%(n_polymer_beads,n_water_beads,water_ratio))
+			'hydrate to a level of %s. try making the box bigger')%(
+			n_polymer_beads,n_water_beads,water_ratio))
 		water_inds = np.where(struct.residue_names==sol_resname)[0]
 		n_keep_waters = int(water_ratio*n_polymer_beads)
 		reindex = range(len(water_inds))

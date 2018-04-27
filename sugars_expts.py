@@ -91,5 +91,44 @@ ny: 2
 nz: 2
 """}]},
 
+'glycans':{
+#####
+####
+###
+##
+#
+'tags':['cgmd'],
+'metarun':[
+{'do':'maltoheptaose','settings':"""
+
+molecule name: GLUC
+residue name: GLUC
+n_p: 1
+water ratio: 10
+nmol: 40 
+box size: 5.
+antifreeze ratio: 0
+atom namer: "lambda x: 'B%d'%([1,2,3][x])"
+
+"""},
+{'step':'large-melt','do':'multiply_general','settings':"""
+step: large
+requires: multiply
+equilibration: ['short1','short2','short3']
+rename_detected_composition: {'GLUC':'GLUC'}
+#! repeated for restarts and write_structure_by_chain
+molecule name: GLUC
+residue name: GLUC
+n_p: 1
+beads per monomer: 3
+#! end hack
+maxwarn: 4
+minimize: True
+proceed: True
+genconf gap: 0.3
+nx: 2
+ny: 2
+nz: 2
+"""}]},
 
 }
