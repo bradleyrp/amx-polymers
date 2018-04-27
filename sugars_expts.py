@@ -64,11 +64,14 @@ mdp specs:|{
 #
 'tags':['cgmd','test'],
 'metarun':[
-#! step is not overriding step in the settings here
-{'step':'XXX','do':'maltoheptaose','settings':"""
+{'step':'small','do':'maltoheptaose','settings':"""
 nmol:               10  # molecules for `gmx insert-molecules`
 box size:           5.  # box size for `gmx insert-molecules`
 rename_detected_composition: {'AMYL':'Maltoheptaose'}
+#! hack below
+composition_adjust: "def composition_adjust(composition):\\n\\tcomposition_adjusted = []\\n\\tfor i,j in composition:\\n\\t\\tcomposition_adjusted.append([i,int(j/7.) if i=='AMYL' else j])\\n\\treturn composition_adjusted"
+water ratio: 10.
+antifreeze ratio: 0.
 """},
 {'step':'large','do':'multiply_general','settings':"""
 step: large
@@ -97,7 +100,7 @@ nz: 2
 ###
 ##
 #
-'tags':['cgmd'],
+'tags':['cgmd','test'],
 'metarun':[
 {'do':'maltoheptaose','settings':"""
 
