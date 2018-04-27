@@ -6,7 +6,7 @@
 ###
 ##
 #
-'tags':['cgmd'],
+'tags':['cgmd','test'],
 'script':'script-maltoheptaose.py',
 'params':'parameters.py',
 'extensions':['melts.py','melts_simple.py'],
@@ -62,7 +62,7 @@ mdp specs:|{
 ###
 ##
 #
-'tags':['cgmd'],
+'tags':['cgmd','test'],
 'metarun':[
 #! step is not overriding step in the settings here
 {'step':'XXX','do':'maltoheptaose','settings':"""

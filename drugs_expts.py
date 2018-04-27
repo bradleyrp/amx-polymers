@@ -5,7 +5,7 @@
 ###
 ##
 #
-'tags':['aamd'],
+'tags':['aamd','test'],
 'script':'script-doxorubicin.py',
 'params':'@polymers/parameters.py',
 'extensions':[],
