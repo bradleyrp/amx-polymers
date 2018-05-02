@@ -24,7 +24,6 @@ minimize('solvate')
 copy_file('solvate-minimized.gro','system-residues.gro')
 antifreeze_ratio = state.q('antifreeze_ratio',False)
 if antifreeze_ratio: 
-	import ipdb;ipdb.set_trace()
 	add_antifreeze(structure='system-residues',gro='system-penultimate',ratio=antifreeze_ratio)
 else: copy_file('system-residues.gro','system-penultimate.gro')
 write_structure_by_chain(structure='system-penultimate',gro='system')
