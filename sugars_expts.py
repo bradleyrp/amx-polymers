@@ -38,6 +38,7 @@ atom namer: "lambda x: 'B%d'%([2,3,1,4,6,5][x%6])"
 #! hack below
 rename_detected_composition: {'AMYL':'Maltoheptaose'}
 composition_adjust: "def composition_adjust(composition):\\n\\tcomposition_adjusted = []\\n\\tfor i,j in composition:\\n\\t\\tcomposition_adjusted.append([i,int(j/7.) if i=='AMYL' else j])\\n\\treturn composition_adjusted"
+maxwarn: 4
 
 sol: W
 solvent: martini-water
