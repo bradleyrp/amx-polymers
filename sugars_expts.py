@@ -35,6 +35,9 @@ antifreeze ratio:   0.10              # whether to add antifreeze
 # a string holding a lambda function for naming beads
 #! consider modifying this to read the ITP directly?
 atom namer: "lambda x: 'B%d'%([2,3,1,4,6,5][x%6])"
+#! hack below
+rename_detected_composition: {'AMYL':'Maltoheptaose'}
+composition_adjust: "def composition_adjust(composition):\\n\\tcomposition_adjusted = []\\n\\tfor i,j in composition:\\n\\t\\tcomposition_adjusted.append([i,int(j/7.) if i=='AMYL' else j])\\n\\treturn composition_adjusted"
 
 sol: W
 solvent: martini-water
@@ -62,13 +65,13 @@ mdp specs:|{
 ###
 ##
 #
-'tags':['cgmd','test'],
+'tags':['cgmd','tested_2018.04.27'],
 'metarun':[
 {'step':'small','do':'maltoheptaose','settings':"""
 nmol:               10  # molecules for `gmx insert-molecules`
 box size:           5.  # box size for `gmx insert-molecules`
-rename_detected_composition: {'AMYL':'Maltoheptaose'}
 #! hack below
+rename_detected_composition: {'AMYL':'Maltoheptaose'}
 composition_adjust: "def composition_adjust(composition):\\n\\tcomposition_adjusted = []\\n\\tfor i,j in composition:\\n\\t\\tcomposition_adjusted.append([i,int(j/7.) if i=='AMYL' else j])\\n\\treturn composition_adjusted"
 water ratio: 10.
 antifreeze ratio: 0.
@@ -77,7 +80,6 @@ antifreeze ratio: 0.
 step: large
 requires: multiply
 equilibration: ['short1','short2','short3']
-rename_detected_composition: {'AMYL':'Maltoheptaose'}
 #! repeated for restarts and write_structure_by_chain
 n_p:                7                 # number of monomers in a polymer
 molecule name:      Maltoheptaose     # molecule name in the final topology
@@ -85,6 +87,7 @@ residue name:       AMYL              # residue name in the molecule
 beads per monomer:  3                 # beads in each monomer
 #! hack below
 composition_adjust: "def composition_adjust(composition):\\n\\tcomposition_adjusted = []\\n\\tfor i,j in composition:\\n\\t\\tcomposition_adjusted.append([i,int(j/7.) if i=='AMYL' else j])\\n\\treturn composition_adjusted"
+rename_detected_composition: {'AMYL':'Maltoheptaose'}
 maxwarn: 4
 minimize: True
 proceed: True
@@ -100,7 +103,7 @@ nz: 2
 ###
 ##
 #
-'tags':['cgmd','test'],
+'tags':['cgmd','tested_2018.05.01'],
 'metarun':[
 {'do':'maltoheptaose','settings':"""
 
