@@ -28,4 +28,6 @@ if antifreeze_ratio:
 else: copy_file('system-residues.gro','system-penultimate.gro')
 write_structure_by_chain(structure='system-penultimate',gro='system')
 write_topology('system.top')
+write_continue_script()
 equilibrate()
+
