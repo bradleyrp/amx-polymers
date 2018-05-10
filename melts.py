@@ -227,7 +227,7 @@ class MultiScaleModel:
 				elif len(matches)>1: raise Exception('dev. uniqueness violated!')
 				else: return matches[0]
 			def add_link(self,bond):
-				i,j = [molecule.get_atom(b) for b in bond]
+				i,j = [self.get_atom(b) for b in bond]
 				if j not in i.neighbors: i.neighbors.append(j)
 				if i not in j.neighbors: j.neighbors.append(i)
 		class Atom:
