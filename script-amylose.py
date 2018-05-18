@@ -18,7 +18,8 @@ if type(box_size) in [float,int]: box_size = ' '.join(['%s'%box_size for i in ra
 gmx('insert-molecules',ci='vacuum_crude-minimized',
 	nmol=settings.nmol,box=box_size,log='insert-molecules',o='vacuum-melt')
 component(settings.molecule_name,count=settings.nmol)
-solvate_weird(structure='vacuum-melt',gro='solvate-untrimmed')
+if settings.do_weird_solvate: solvate_weird(structure='vacuum-melt',gro='solvate-untrimmed')
+else: solvate(structure='vacuum-melt',gro='solvate-untrimmed')
 hydration_adjust(structure='solvate-untrimmed',gro='solvate')
 write_topology('solvate.top')
 minimize('solvate')
