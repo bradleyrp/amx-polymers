@@ -31,4 +31,19 @@ mdp_specs:| {
 		},
 	}
 """},
+'doxorubicin_martini':{
+#####
+####
+###
+##
+#
+'tags':['aamd','test'],
+'script':'script-coarse-small-molecule.py',
+'params':'@polymers/parameters.py',
+'extensions':['coarse_grain_simple.py'],
+'settings':"""
+step: coarse-grain
+source_xtc: /home/rpb/omicron/dataset-project-polymers/melt-v048-dox/a02-aside/source.xtc
+source_gro: /home/rpb/omicron/dataset-project-polymers/melt-v048-dox/a02-aside/source.gro
+"""},
 }
